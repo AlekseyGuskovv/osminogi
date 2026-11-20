@@ -15,6 +15,7 @@ from uuid import uuid4
 from .analysis.advisories import load_advisories
 from .analysis.registry import register_analysis_handlers
 from .analysis.types import Snapshot
+from .connections import deliver
 from .contract import ApiError, schedule_value, to_event, to_internal, zone
 from .word_api import WordApi
 from .ml.live import generate_report
@@ -22,13 +23,13 @@ from .ml.live_draft import generate_workflow
 from .ml.provider import ModelError, build_provider
 from .project_import import ArchiveTooLarge, MAX_UPLOAD, read_project
 from .store import Store
-from .telegram import DeliveryError, send_report
+from .telegram import DeliveryError
 
 
 ROOT = Path(__file__).resolve().parents[2]
 PROVIDER = build_provider()
 SCAN_TYPES = {"secrets": "secrets", "deps": "sca", "code": "sast"}
-LEVELS = {"low": 0, "medium": 0, "high": 1, "critical": 2}
+LEVELS = {"low": -1, "medium": 0, "high": 1, "critical": 2}
 LINEAR = {"start", "ai", *SCAN_TYPES}
 TERMINAL = {"finish", "telegram"}
 RUNS = {}
@@ -40,7 +41,7 @@ ANALYZERS = None
 
 def condition(node, findings):
     metric, value = node.get("metric", "severity"), node.get("threshold", 2)
-    if metric == "severity" and type(value) is int and value in (0, 1, 2):
+    if metric == "severity" and type(value) is int and value in (-1, 0, 1, 2):
         return any(LEVELS[item.severity] >= value for item in findings)
     if metric == "count" and type(value) is int and 0 <= value <= 5000:
         return len(findings) >= value
@@ -187,7 +188,7 @@ def execute(run, graph, snapshot, base):
                 rows = [f"{item.severity.upper()} · {item.title} · {item.path}:{item.line}"
                         for item in findings.values()]
                 report = "\n".join(["Cyber Garden", summary or f"Найдено: {count}", *rows])
-                message_id = send_report(report)
+                message_id = deliver(STORE, nodes[key], report)
                 delivery = {"status": "sent", "messageId": message_id}
                 output = f"Telegram принял отчёт. Номер сообщения: {message_id}."
             details = ({"branch": branch, "inputFindings": [asdict(item) for item in findings.values()]}
@@ -468,9 +469,15 @@ class Handler(BaseHTTPRequestHandler):
                 if not template:
                     self.reply(404, {"message": "Шаблон не найден."})
                 else:
-                    copied = save_workflow({"name": template["name"], "graph": template["graph"]})
+                    graph = template["graph"]
                     if not demo:
-                        from .contract import to_workflow
+                        for node in graph["nodes"]:
+                            if node["type"] == "telegram":
+                                node["channelId"] = None
+                    copied = save_workflow({"name": template["name"], "graph": graph})
+                    if not demo:
+                        from .connections import deliver
+from .contract import to_workflow
                         copied = to_workflow(copied)
                     self.reply(201, copied)
             elif path == "/workflows/draft":

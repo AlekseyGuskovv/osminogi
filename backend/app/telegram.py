@@ -10,8 +10,8 @@ class DeliveryError(RuntimeError):
     pass
 
 
-def call_telegram(method, payload):
-    token = os.environ.get("GARDEN_TELEGRAM_BOT_TOKEN", "").strip()
+def call_telegram(method, payload, token=None):
+    token = (token or os.environ.get("GARDEN_TELEGRAM_BOT_TOKEN", "")).strip()
     if not token:
         raise DeliveryError("Токен Telegram не настроен.")
     if not re.fullmatch(r"\d+:[A-Za-z0-9_-]+", token):
@@ -31,11 +31,11 @@ def call_telegram(method, payload):
         raise DeliveryError("Не удалось получить ответ Telegram.") from None
 
 
-def send_report(report):
-    chat_id = os.environ.get("GARDEN_TELEGRAM_CHAT_ID", "").strip()
+def send_report(report, *, token=None, chat_id=None):
+    chat_id = (chat_id or os.environ.get("GARDEN_TELEGRAM_CHAT_ID", "")).strip()
     if not chat_id:
         raise DeliveryError("ID закрытого Telegram-чата не задан.")
-    result = call_telegram("sendMessage", {"chat_id": chat_id, "text": report[:3800]})
+    result = call_telegram("sendMessage", {"chat_id": chat_id, "text": report[:3800]}, token=token)
     message_id = result.get("message_id") if isinstance(result, dict) else None
     if type(message_id) is not int:
         raise DeliveryError("Telegram не подтвердил доставку отчёта.")

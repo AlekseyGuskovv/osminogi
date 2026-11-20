@@ -4,6 +4,7 @@ from uuid import uuid4
 from .analysis.remediation import apply_training_patch, build_safe_patch
 from .analysis.report import markdown, submission
 from .analysis.types import Finding
+from .connections import connections, save_connection
 from .contract import ApiError, SEVERITIES, to_internal, to_run, to_workflow
 
 
@@ -72,17 +73,15 @@ class WordApi:
         if node is None or inputs is None:
             raise ApiError(422, "CONDITION_UNAVAILABLE", "Нет сохранённого входа для этого блока.")
         metric = node.get("metric", "severity")
-        threshold = (0 if value == "low" else SEVERITIES.index(value)) if metric == "severity" else value
+        threshold = (-1 if value == "low" else SEVERITIES.index(value)) if metric == "severity" else value
         facts = [Finding(**item) for item in inputs]
         branch = "yes" if self.condition({**node, "threshold": threshold}, facts) else "no"
         nodes = {item["id"]: item for item in graph["nodes"]}
-        source = node_id
+        source, first = node_id, branch
         while True:
             edge = next((item for item in graph["edges"] if item["source"] == source and item["branch"] == branch), None)
             if edge is None:
                 return {"nodeId": node_id, "value": value, "branch": first, "wouldNotify": False}
-            if source == node_id:
-                first = branch
             source = edge["target"]
             target = nodes[source]
             if target["type"] in {"telegram", "finish"}:
@@ -117,6 +116,8 @@ class WordApi:
         pieces = path.strip("/").split("/")
         if path == "/workflows":
             handler.reply(200, [to_workflow(row) for row in self.store.list("workflow")])
+        elif path == "/connections":
+            handler.reply(200, connections(self.store))
         elif path == "/templates":
             rows = self.store.list("template")
             handler.reply(200, [self.template(row) for row in rows])
@@ -166,6 +167,8 @@ class WordApi:
         pieces = path.strip("/").split("/")
         if path == "/workflows":
             handler.reply(201, self.save(data))
+        elif path == "/connections":
+            handler.reply(201, save_connection(self.store, data))
         elif len(pieces) == 3 and pieces[0] == "workflows":
             row = self.workflow(pieces[1])
             if pieces[2] == "save":

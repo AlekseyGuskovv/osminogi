@@ -411,7 +411,7 @@ $('copyTemplate').onclick = () => action(async()=>{
 });
 async function refreshHistory() {
   if (busy) return;
-  const rows=(await api('/runs')).filter(row=>row.status!=='queued');
+  const rows=(await api('/runs')).filter(row=>!['queued','running'].includes(row.status));
   if (busy || rows[0]?.id===state.history[0]?.id) return;
   const current=viewed===state.history[0]?.id || !viewed;
   state.history=rows.map(row=>runEntry(row));

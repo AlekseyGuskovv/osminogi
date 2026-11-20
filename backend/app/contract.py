@@ -57,12 +57,13 @@ def to_internal(data):
                 raise ValueError("Неизвестное условие ветвления.")
             value = settings.get("value")
             if metric == "severity":
-                value = 0 if value == "low" else SEVERITIES.index(value)
+                value = -1 if value == "low" else SEVERITIES.index(value)
             node.update(metric=metric, threshold=value)
-        if kind == "telegram" and settings.get("channelId") is not None:
-            if not isinstance(settings["channelId"], str):
+        if kind == "telegram":
+            channel = settings.get("channelId")
+            if channel is not None and not isinstance(channel, str):
                 raise ValueError("Укажите ID подключения.")
-            node["channelId"] = settings["channelId"]
+            node["channelId"] = channel
         converted.append(node)
     return {"nodes": converted, "edges": [
         {"source": edge["from"], "target": edge["to"], "branch": "" if edge["branch"] == "next" else edge["branch"]}
@@ -79,7 +80,7 @@ def to_word_graph(graph):
             metric, operator = BACKEND_METRICS[row.get("metric", "severity")]
             threshold = row.get("threshold", 2)
             settings = {"metric": metric, "operator": operator,
-                        "value": SEVERITIES[threshold] if metric == "maxSeverity" else threshold}
+                        "value": ("low" if threshold == -1 else SEVERITIES[threshold]) if metric == "maxSeverity" else threshold}
         if kind == "telegram" and row.get("channelId"):
             settings["channelId"] = row["channelId"]
         nodes.append({**item, "type": TO_WORD.get(kind, kind), "settings": settings})
