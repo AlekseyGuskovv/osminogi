@@ -1,4 +1,4 @@
-﻿from dataclasses import asdict
+from dataclasses import asdict
 from datetime import UTC, datetime
 from email import policy
 from email.parser import BytesParser
@@ -142,7 +142,7 @@ def execute(run, graph, snapshot, base):
     nodes, links, key = graph
     findings, advice, steps, scanned = {}, {}, {}, set()
     summary, delivery, integration_errors = "", {"status": "skipped"}, []
-    status, delta = "succeeded", None
+    status, delta, resolved = "succeeded", None, None
 
     def step(node_id, state, count=None, output=""):
         payload = {"status": state, "input": count, "output": output}
@@ -194,6 +194,7 @@ def execute(run, graph, snapshot, base):
         try:
             previous = {row.id: row for name in scanned for row in ANALYZERS[name](base, name)}
             delta = compare(findings, previous)
+            resolved = [asdict(previous[key]) for key in delta["resolved"]]
         except (ValueError, KeyError):
             status = "failed"
     ci = ("error" if status == "failed" else
@@ -202,7 +203,7 @@ def execute(run, graph, snapshot, base):
     run.finish({"status": "partial" if status == "succeeded" and integration_errors else status,
                 "ci": ci, "findings": [asdict(item) for item in findings.values()],
                 "recommendations": [asdict(row) for row in advice.values()], "comparison": delta,
-                "scanned": sorted(scanned), "steps": steps, "delivery": delivery,
+                "resolvedFindings": resolved, "scanned": sorted(scanned), "steps": steps, "delivery": delivery,
                 "summary": summary, "integrationErrors": integration_errors})
 
 

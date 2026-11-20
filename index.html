@@ -9,7 +9,7 @@
 *{box-sizing:border-box}body{margin:0}button,input,select,textarea{font:inherit}button,select{cursor:pointer}button{border:1px solid var(--line);background:white;color:var(--ink);border-radius:9px;padding:8px 12px;font-weight:600}button:hover{background:#e8f2e9}button:disabled{opacity:.55;cursor:default}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #52a477;outline-offset:2px}input,select,textarea{width:100%;border:1px solid #cbd8cd;border-radius:8px;padding:8px;color:var(--ink);background:white}textarea{resize:vertical}
 .shell{max-width:1540px;margin:auto;padding:0 28px 38px}header{background:#132e24;color:#f7fff8}header .shell{padding-top:18px;padding-bottom:18px;display:flex;align-items:center;justify-content:space-between;gap:12px}.brand{display:flex;align-items:center;gap:10px;font-weight:750;letter-spacing:.025em}.logo{display:grid;place-items:center;width:32px;height:32px;border-radius:10px;background:#bdeaa1;color:#132e24;font-size:20px}.demo{border:1px solid #638272;border-radius:100px;padding:3px 10px;color:#e5f2e5;font-size:13px}
 .hero{padding:30px 0 20px;display:flex;justify-content:space-between;align-items:end;gap:18px;flex-wrap:wrap}h1,h2,h3,p{margin:0}h1{font-size:clamp(30px,5vw,50px);line-height:1.06;letter-spacing:-.05em}h2{font-size:17px}h3{font-size:15px}p,small{color:var(--muted)}.hero p{margin-top:9px}.primary{background:#236747;color:white;border-color:#236747}.primary:hover{background:#174b33}
-.panel{background:white;border:1px solid var(--line);border-radius:16px;overflow:hidden}.bar{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.prompt{margin-bottom:14px;padding:12px 16px}.prompt summary{cursor:pointer;font-weight:650}.prompt form{display:grid;gap:8px;margin-top:9px}.prompt form .row{justify-content:space-between}.workspace{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:14px;align-items:start}.palette{padding:10px 14px;display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--line)}.palette button{font-size:13px;padding:5px 8px}.viewport{height:515px;overflow:auto;background:#f7faf5}.canvas{position:relative;background-image:radial-gradient(#c7d6ca 1px,transparent 1px);background-size:18px 18px}.wires{position:absolute;inset:0;pointer-events:none}.wires path{fill:none;stroke:#668675;stroke-width:2}.wires text{fill:#28543f;font-size:12px;font-weight:bold;paint-order:stroke;stroke:#f7faf5;stroke-width:6}.node{position:absolute;width:178px;min-height:76px;display:flex;align-items:flex-start;gap:8px;text-align:left;padding:11px;background:#fff;box-shadow:0 3px 7px #142d2412;touch-action:none;cursor:grab}.node.active{outline:2px solid #277350}.node-icon{flex:none;display:grid;place-items:center;width:28px;height:28px;background:#e7f2e7;color:#24553e;border-radius:8px}.node small{display:block;font-weight:500;margin-top:4px}.node.running{border-color:#8d6600;background:#fffae6}.node.done{border-color:#81b594}.node.failed{border-color:#b7493b;background:#fff1ef}.node.skipped{opacity:.68}.side{padding:15px;display:grid;gap:12px}.side label,.side section{display:grid;gap:6px}.side .row select{flex:1;width:auto;min-width:105px}.side .row button{padding:5px 8px}.danger{color:#9c332f}.hint{padding:9px 14px;border-top:1px solid var(--line);font-size:13px}.message{padding:10px 14px;background:#e9f4e8;border-radius:9px;margin-bottom:12px}.message.error{background:#ffece7;color:#832d22}[hidden]{display:none!important}
+.panel{background:white;border:1px solid var(--line);border-radius:16px;overflow:hidden}.bar{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.prompt{margin-bottom:14px;padding:12px 16px}.prompt .row{margin:7px 0}.prompt #zip{width:auto;max-width:100%}.prompt summary{cursor:pointer;font-weight:650}.prompt form{display:grid;gap:8px;margin-top:9px}.prompt form .row{justify-content:space-between}.workspace{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:14px;align-items:start}.palette{padding:10px 14px;display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--line)}.palette button{font-size:13px;padding:5px 8px}.viewport{height:515px;overflow:auto;background:#f7faf5}.canvas{position:relative;background-image:radial-gradient(#c7d6ca 1px,transparent 1px);background-size:18px 18px}.wires{position:absolute;inset:0;pointer-events:none}.wires path{fill:none;stroke:#668675;stroke-width:2}.wires text{fill:#28543f;font-size:12px;font-weight:bold;paint-order:stroke;stroke:#f7faf5;stroke-width:6}.node{position:absolute;width:178px;min-height:76px;display:flex;align-items:flex-start;gap:8px;text-align:left;padding:11px;background:#fff;box-shadow:0 3px 7px #142d2412;touch-action:none;cursor:grab}.node.active{outline:2px solid #277350}.node-icon{flex:none;display:grid;place-items:center;width:28px;height:28px;background:#e7f2e7;color:#24553e;border-radius:8px}.node small{display:block;font-weight:500;margin-top:4px}.node.running{border-color:#8d6600;background:#fffae6}.node.done{border-color:#81b594}.node.failed{border-color:#b7493b;background:#fff1ef}.node.skipped{opacity:.68}.side{padding:15px;display:grid;gap:12px}.side label,.side section{display:grid;gap:6px}.side .row select{flex:1;width:auto;min-width:105px}.side .row button{padding:5px 8px}.danger{color:#9c332f}.hint{padding:9px 14px;border-top:1px solid var(--line);font-size:13px}.message{padding:10px 14px;background:#e9f4e8;border-radius:9px;margin-bottom:12px}.message.error{background:#ffece7;color:#832d22}[hidden]{display:none!important}
 .results{margin-top:14px}.results-body{padding:15px;display:grid;gap:13px}.findings{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr));gap:9px}.finding{text-align:left;padding:12px;display:grid;gap:5px}.badge{display:inline-block;width:fit-content;border-radius:99px;padding:3px 9px;background:#e6f3e8;color:#1b5b38;font-size:12px;font-weight:700}.badge.red{background:#fbe7e3;color:#8e2f27}.badge.amber{background:#fff0cd;color:#724b00}.badge.gray{background:#ebefeb;color:#49594f}.history{display:flex;gap:7px;flex-wrap:wrap}.history button[aria-pressed=true]{background:#e0f1e2;border-color:#8bb99a}.path{overflow-wrap:anywhere}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#eaf0e9;padding:10px;border-radius:8px;margin:0}dialog{width:min(500px,calc(100% - 28px));border:1px solid var(--line);border-radius:16px;padding:18px;color:var(--ink)}dialog::backdrop{background:#132e2470}dialog article{display:grid;gap:12px}dialog form{display:flex;justify-content:flex-end}.muted{font-size:13px;color:var(--muted)}
 @media(max-width:860px){.workspace{grid-template-columns:1fr}.shell{padding-left:14px;padding-right:14px}.viewport{height:390px}}
 </style>
@@ -17,9 +17,14 @@
 <body>
 <header><div class="shell"><div class="brand"><span class="logo" aria-hidden="true">✳</span> Cyber Garden</div><span class="demo">Локальный прототип</span></div></header>
 <main class="shell">
-<div class="hero"><div><h1>Проверка кода</h1><p>Запустите готовый сценарий и посмотрите, что нужно исправить перед слиянием.</p></div><div class="row"><button id="fix">Применить учебное исправление</button><button id="run" class="primary">▶ Запустить проверку</button></div></div>
-<div class="row" style="margin-bottom:12px"><span id="version" class="badge gray"></span><small>Учебный Kotlin-проект · Python-анализ · Telegram в предпросмотре · GitHub Actions не подключён</small></div>
-<details class="panel prompt"><summary>Собрать сценарий из текста</summary><form id="promptForm"><label for="prompt">Что нужно проверить?</label><textarea id="prompt" rows="2" placeholder="Например, найди секреты и отправь в Telegram критичные находки" required></textarea><div class="row"><button type="button" id="example">Подставить пример</button><button class="primary">Собрать сценарий</button></div></form></details>
+<div class="hero"><div><h1>Проверка кода</h1><p>Запустите готовый сценарий и посмотрите, что нужно исправить перед слиянием.</p></div><div class="row"><button id="run" class="primary">▶ Запустить проверку</button></div></div>
+<div class="row" style="margin-bottom:12px"><span id="version" class="badge gray"></span><small>Анализ Kotlin / Spring Boot / Gradle</small></div>
+<section class="panel prompt" aria-label="Проект и сценарий">
+  <div class="row"><label for="zip">Загрузить учебный ZIP</label><input id="zip" type="file" accept=".zip,application/zip"><button id="upload">Загрузить</button></div>
+  <div class="row"><label>Проект<select id="snapshot"></select></label><label>База для сравнения<select id="base"></select></label></div>
+  <div class="row"><label>Название сценария<input id="workflowName" value="Проверка"></label><button id="saveWorkflow">Сохранить сценарий</button><label>Сохранённые<select id="workflows"></select></label></div>
+  <div class="row"><button id="publish">Опубликовать шаблон</button><label>Шаблоны<select id="templates"></select></label><button id="copyTemplate">Создать копию</button></div>
+</section><details class="panel prompt"><summary>Собрать сценарий из текста</summary><form id="promptForm"><label for="prompt">Что нужно проверить?</label><textarea id="prompt" rows="2" placeholder="Например, найди секреты и отправь в Telegram критичные находки" required></textarea><div class="row"><button type="button" id="example">Подставить пример</button><button class="primary">Собрать сценарий</button></div></form></details>
 <p id="message" class="message" role="status" hidden></p>
 <div class="workspace">
 <section class="panel" aria-labelledby="graphTitle"><div class="bar"><h2 id="graphTitle">Сценарий проверки</h2><small id="saveState"></small></div><div class="palette" id="palette" aria-label="Добавить блок"></div><div class="viewport"><div id="canvas" class="canvas"><svg id="wires" class="wires" aria-hidden="true"></svg><div id="nodes"></div></div></div><p class="hint">Перетащите блок, чтобы переместить его. Выберите блок, чтобы настроить его или добавить связь.</p></section>
@@ -33,20 +38,20 @@
 const $ = id => document.getElementById(id);
 const encode = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[char]);
 const types = {
-  start: ['▶', 'Запуск', 'Запустите проверку кнопкой или по расписанию.'],
+  start: ['▶', 'Запуск', 'Запустите проверку кнопкой или сохраните ежедневное расписание.'],
   secrets: ['⌑', 'Найти секреты', 'Показывает учебную находку для ключа, оставленного в настройках.'],
   deps: ['▦', 'Проверить зависимости', 'Показывает учебную находку по версии библиотеки в Gradle.'],
   code: ['⌘', 'Проверить код', 'Показывает учебную находку по настройкам доступа в Kotlin.'],
-  ai: ['✳', 'Объяснить риски', 'Добавляет подготовленные объяснения и шаги исправления.'],
+  ai: ['✳', 'Объяснить риски', 'Запрашивает сводку и объяснения у CodexGenerator.'],
   gate: ['◇', 'Проверить критичность', 'Выбирает ветку по самой серьёзной находке.'],
-  telegram: ['➤', 'Отчёт в Telegram', 'Показывает, какое сообщение увидела бы команда.'],
+  telegram: ['➤', 'Отчёт в Telegram', 'Отправляет отчёт в закрытый Telegram-чат, настроенный на сервере.'],
   finish: ['✓', 'Завершить', 'Показывает результат этой ветки.']
 };
 const levels = ['Средняя', 'Высокая', 'Критическая'];
 const severities = {low:0,medium:0,high:1,critical:2};
 const analyzer = {'SECRET-01':'secrets','SCA-01':'sca','SAST-01':'sast'};
 async function api(path, data) {
-  const response = await fetch('/api/v1'+path, data === undefined ? undefined : {
+  const response = await fetch('/api/v1'+path, data === undefined ? undefined : data instanceof FormData ? {method:'POST',body:data} : {
     method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)
   });
   const body = await response.json();
@@ -62,8 +67,8 @@ function makeGraph(checks = ['secrets','deps','code'], notify = true, explain = 
   edges.push({source:'gate',target:'yes',branch:'yes'},{source:'gate',target:'no',branch:'no'});
   return {nodes,edges};
 }
-const storageKey = 'cyber-garden-backend-v1';
-let state = {graph:makeGraph(),history:[],fixed:false};
+const storageKey = 'cyber-garden-live-v1';
+let state = {graph:makeGraph(),history:[],snapshotId:'',baseSnapshotId:'',workflowId:null};
 let saved = true;
 try {
   const stored = JSON.parse(localStorage.getItem(storageKey));
@@ -119,9 +124,13 @@ function drawInspector() {
   const links = state.graph.edges.filter(edge=>edge.source===node.id);
   const locked = busy?' disabled':'';
   const step = live[node.id];
+  const metric = node.metric || 'severity';
+  const gateSettings = '<label>Условие<select id="metric"'+locked+'>'+[['severity','Критичность не ниже'],['count','Находок не меньше'],['title','Название подходит под выражение']].map(([value,label])=>'<option value="'+value+'"'+(value===metric?' selected':'')+'>'+label+'</option>').join('')+'</select></label>'
+    + (metric==='severity'?'<label>Порог<select id="threshold"'+locked+'>'+levels.map((level,index)=>'<option value="'+index+'"'+(index===(node.threshold??2)?' selected':'')+'>'+level+'</option>').join('')+'</select></label>'
+    : '<label>'+(metric==='count'?'Количество':'Регулярное выражение')+'<input id="threshold" '+(metric==='count'?'type="number" min="0" max="5000"':'maxlength="80"')+' value="'+encode(node.threshold)+'"'+locked+'></label>');
   $('inspector').innerHTML = '<h2>'+nodeName(node)+'</h2><p>'+types[node.type][2]+'</p>'
-    + (node.type==='gate'?'<label>Порог критичности<select id="threshold"'+locked+'>'+levels.map((level,index)=>'<option value="'+index+'"'+(index===(node.threshold??2)?' selected':'')+'>'+level+'</option>').join('')+'</select></label>':'')
-    + (node.type==='start'?'<label>Ежедневный запуск по местному времени<input id="schedule" type="time" value="'+encode(node.schedule||'')+'"'+locked+'></label><small>Время сохраняется в графе. В этой сборке используйте ручной запуск.</small><div class="row"><button id="simulate"'+locked+'>Запустить вручную</button>'+(node.schedule?'<button id="clearSchedule"'+locked+'>Выключить</button>':'')+'</div>':'')
+    + (node.type==='gate'?gateSettings:'')
+    + (node.type==='start'?'<label>Ежедневный запуск, UTC<input id="schedule" type="time" value="'+encode(node.schedule||'')+'"'+locked+'></label><small>Нажмите «Сохранить сценарий», чтобы активировать расписание на сервере.</small><div class="row"><button id="simulate"'+locked+'>Запустить вручную</button>'+(node.schedule?'<button id="clearSchedule"'+locked+'>Выключить</button>':'')+'</div>':'')
     + '<section><h3>Куда передать результат</h3>'
     + (links.length?links.map(edge=>'<div class="row"><span>'+branchName(edge.branch)+' → '+encode(nodeName(state.graph.nodes.find(item=>item.id===edge.target)))+'</span><button data-unlink="'+state.graph.edges.indexOf(edge)+'"'+locked+' aria-label="Удалить связь">×</button></div>').join(''):'<small>Связей пока нет.</small>')
     + (options.length && !['finish','telegram'].includes(node.type)?'<div class="row">'+(node.type==='gate'?'<select id="branch" aria-label="Ветка"'+locked+'><option value="yes">Да</option><option value="no">Нет</option></select>':'')+'<select id="target" aria-label="Следующий блок"'+locked+'>'+options.map(item=>'<option value="'+encode(item.id)+'">'+nodeName(item)+(item.id==='yes'?' · Да':item.id==='no'?' · Нет':'')+'</option>').join('')+'</select><button id="link"'+locked+'>Связать</button></div>':'')
@@ -178,7 +187,15 @@ $('nodes').onpointerdown = event => {
 $('inspector').onchange = event => {
   const node = current();
   if (!node || busy) return;
-  if (event.target.id==='threshold') { node.threshold = Number(event.target.value); edit(); }
+  if (event.target.id==='metric') {
+    node.metric = event.target.value;
+    node.threshold = {severity:2,count:1,title:'Ключ'}[node.metric];
+    edit();
+  }
+  if (event.target.id==='threshold') {
+    node.threshold = node.metric==='title'?event.target.value:Number(event.target.value);
+    edit();
+  }
   if (event.target.id==='schedule') { node.schedule = event.target.value; update(); }
 };
 $('inspector').onclick = event => {
@@ -218,7 +235,7 @@ $('promptForm').onsubmit = async event => {
     selected = state.graph.nodes.find(node=>node.type==='start').id;
     fallback.hidden = true;
     edit();
-    message([draft.source==='model'?'Черновик CodexGenerator готов.':'Резервный черновик готов.', ...draft.warnings].join(' '));
+    message(['Черновик CodexGenerator готов.', ...draft.warnings].join(' '));
   } catch (error) {
     fallback.hidden = false;
     message(error.message,true);
@@ -259,10 +276,10 @@ function validate() {
   return starts[0];
 }
 function drawControls() {
-  $('version').textContent = state.fixed?'Исправленная версия':'Исходная версия';
-  $('fix').textContent = state.fixed?'Вернуть исходный пример':'Применить учебное исправление';
-  $('run').textContent = busy?'Проверка выполняется…':'▶ Запустить проверку';
-  $('run').disabled = $('fix').disabled = busy;
+  $('version').textContent = 'Результаты реальных запусков';
+  $('run').textContent = busy?'Выполняется…':'▶ Запустить проверку';
+  $('run').disabled = busy || !state.snapshotId;
+  for (const id of ['zip','upload','snapshot','base','workflowName','saveWorkflow','workflows','publish','templates','copyTemplate']) $(id).disabled = busy;
   for (const button of [...$('palette').querySelectorAll('button'),...$('promptForm').querySelectorAll('button')]) button.disabled = busy;
 }
 function watchRun(id) {
@@ -293,57 +310,114 @@ function watchRun(id) {
     };
   });
 }
-async function run(trigger) {
-  if (busy) return;
+function runEntry(result) {
+  const found = result.findings.map(item=>{
+    const recommendation = result.recommendations.find(row=>row.findingId===item.id);
+    return {id:item.id,title:item.title,level:severities[item.severity],file:item.path,line:item.line,
+      evidence:item.evidence,source:analyzer[item.ruleId],
+      explain:recommendation?.explanation || 'Анализатор отметил эту строку для проверки.',
+      fix:recommendation?.action || 'Проверьте отмеченную настройку.',
+      adviceSource:recommendation?.source,advisoryId:item.advisoryId};
+  });
+  const compareWith = result.resolvedFindings?.map(item=>({id:item.id,title:item.title,level:severities[item.severity],
+    file:item.path,line:item.line,evidence:item.evidence,explain:'Находка присутствовала в базовом снимке.',fix:'Проверьте изменение в исходном файле.'}));
+  const fixed = result.ci==='error'?[]:compareWith ?? [];
+  return {id:result.id,time:new Date(result.createdAt).toLocaleString('ru-RU'),found,fixed,
+    steps:result.steps,ci:result.ci,comparison:result.comparison,summary:result.summary,
+    trigger:result.trigger,delivery:result.delivery,errors:result.integrationErrors};
+}
+async function run() {
+  if (busy || !state.snapshotId) return;
   try { validate(); } catch (error) { message(error.message,true); return; }
   message('');
   busy = true; live = {};
   drawControls(); drawGraph(); drawInspector();
   try {
-    const accepted = await api('/runs',{graph:state.graph,snapshotId:state.fixed?'pr-2':'pr-1',trigger});
+    const accepted = await api('/runs',{graph:state.graph,snapshotId:state.snapshotId,baseSnapshotId:state.baseSnapshotId || undefined});
     const result = await watchRun(accepted.id);
     live = result.steps;
-    const found = result.findings.map(item=>{
-      const recommendation = result.recommendations.find(row=>row.findingId===item.id);
-      return {id:item.id, title:item.title, level:severities[item.severity], file:item.path,
-        line:item.line, evidence:item.evidence, source:analyzer[item.ruleId],
-        explain:recommendation?.explanation || 'Анализатор отметил эту строку для проверки.',
-        fix:recommendation?.action || 'Проверьте отмеченную настройку или подключите блок объяснения.',
-        adviceSource:recommendation?.source, advisoryId:item.advisoryId};
-    });
-    const previous = state.history.find(entry=>entry.signature===signature() && entry.ci!=='error');
-    const fixed = result.ci==='error'?[]:(previous?.found.filter(item=>
-      result.scanned.includes(item.source) && !found.some(row=>row.id===item.id)) || []);
-    const entry = {id:result.id,time:new Date().toLocaleString('ru-RU'),found,fixed,
-      steps:live,signature:signature(),ci:result.ci};
+    const entry = runEntry(result);
     state.history = [entry,...state.history].slice(0,15);
     viewed = entry.id;
     drawResults();
-    if (result.ci==='error') message('Проверка завершилась с ошибкой. Откройте блок на холсте.',true);
-    else message(fixed.length?'Повторная проверка завершена. Исправление подтверждено.':'Проверка завершена. Результаты под сценарием.');
+    if (result.ci==='error') message('Анализ завершился ошибкой. Откройте блок на холсте.',true);
+    else if (result.integrationErrors.length) message('Анализаторы завершили работу. Ошибки интеграций указаны в результатах.',true);
+    else message('Проверка завершена. Результаты под сценарием.');
   } catch (error) {
     message(error.message,true);
   } finally {
     busy = false; drawControls(); update();
   }
 }
-function signature() {
-  return JSON.stringify(state.graph.nodes.map(({id,type,threshold})=>({id,type,threshold})))+JSON.stringify(state.graph.edges);
+$('run').onclick = run;
+function options(items, chosen, empty, property) {
+  return '<option value="">'+empty+'</option>'+items.map(item=>'<option value="'+encode(item.id)+'"'+
+    (item.id===chosen?' selected':'')+'>'+encode(item[property])+'</option>').join('');
 }
-$('run').onclick = () => run('Ручной запуск');
-$('fix').onclick = async () => {
+async function refreshLists() {
+  const [snapshots,workflows,templates] = await Promise.all(['/snapshots','/workflows','/templates'].map(path=>api(path)));
+  if (!snapshots.some(row=>row.id===state.snapshotId)) state.snapshotId = '';
+  $('snapshot').innerHTML = options(snapshots,state.snapshotId,'Выберите ZIP','label');
+  $('base').innerHTML = options(snapshots,state.baseSnapshotId,'Без сравнения','label');
+  $('workflows').innerHTML = options(workflows,state.workflowId,'Новый сценарий','name');
+  $('templates').innerHTML = options(templates,$('templates').value,'Выберите шаблон','name');
+  return workflows;
+}
+async function action(work) {
   if (busy) return;
   busy = true; drawControls(); drawInspector();
-  try {
-    state.fixed = !state.fixed && (await api('/fixes/demo',{})).snapshotId==='pr-2';
-    save();
-    message(state.fixed?'Учебный ключ удалён из настроек. Запустите проверку ещё раз.':'Исходный пример восстановлен.');
-  } catch (error) {
-    message(error.message,true);
-  } finally {
-    busy = false; drawControls(); drawInspector();
-  }
-};
+  try { await work(); } catch (error) { message(error.message,true); }
+  finally { busy = false; drawControls(); drawInspector(); }
+}
+$('upload').onclick = () => action(async()=>{
+  const file = $('zip').files[0];
+  if (!file) throw Error('Выберите ZIP.');
+  const data = new FormData(); data.append('file',file);
+  state.snapshotId = (await api('/snapshots/import',data)).id;
+  await refreshLists(); save(); message('Учебный проект загружен.');
+});
+$('snapshot').onchange = () => {state.snapshotId=$('snapshot').value; save(); drawControls();};
+$('base').onchange = () => {state.baseSnapshotId=$('base').value; save();};
+function openWorkflow(workflow) {
+  state.graph=workflow.graph; state.snapshotId=workflow.snapshotId || ''; state.workflowId=workflow.id;
+  $('workflowName').value=workflow.name;
+  selected=state.graph.nodes[0].id; edit();
+}
+$('workflows').onchange = () => action(async()=>{
+  const id=$('workflows').value;
+  if (!id) {state.workflowId=null;save();return;}
+  const workflow=(await api('/workflows')).find(item=>item.id===id);
+  if (workflow) {openWorkflow(workflow);await refreshLists();}
+});
+$('saveWorkflow').onclick = () => action(async()=>{
+  validate();
+  const path=state.workflowId?'/workflows/'+state.workflowId+'/save':'/workflows';
+  const schedule=state.graph.nodes.find(node=>node.type==='start').schedule || null;
+  const workflow=await api(path,{graph:state.graph,snapshotId:state.snapshotId || null,name:$('workflowName').value,schedule});
+  state.workflowId=workflow.id;
+  await refreshLists();save();message(schedule?'Сценарий сохранён. Расписание действует по UTC.':'Сценарий сохранён.');
+});
+$('publish').onclick = () => action(async()=>{
+  if (!state.workflowId) throw Error('Сначала сохраните сценарий.');
+  const description=window.prompt('Что проверяет этот шаблон?');
+  if (description===null) return;
+  const template=await api('/templates',{workflowId:state.workflowId,description});
+  await refreshLists();$('templates').value=template.id;message('Шаблон опубликован.');
+});
+$('copyTemplate').onclick = () => action(async()=>{
+  if (!$('templates').value) throw Error('Выберите шаблон.');
+  openWorkflow(await api('/templates/'+$('templates').value+'/copy',{}));
+  await refreshLists();message('Копия открыта. Выберите учебный ZIP.');
+});
+async function refreshHistory() {
+  if (busy) return;
+  const rows=(await api('/runs')).filter(row=>row.status!=='queued');
+  if (busy || rows[0]?.id===state.history[0]?.id) return;
+  const current=viewed===state.history[0]?.id || !viewed;
+  state.history=rows.map(row=>runEntry(row));
+  if (current) viewed=state.history[0]?.id;
+  drawResults();save();
+}
 function drawResults() {
   const entry = state.history.find(item=>item.id===viewed);
   if (!entry) { $('results').innerHTML = '<p>Запустите проверку, чтобы увидеть находки и статус перед слиянием.</p>'; return; }
@@ -355,7 +429,11 @@ function drawResults() {
   }[entry.ci];
   $('ci').innerHTML = '<span class="badge '+ci[0]+'">'+ci[1]+'</span>';
   const finding = (item,fixed) => '<button class="finding" data-finding="'+item.id+'" data-fixed="'+fixed+'"><span class="badge '+(fixed?'':item.level===2?'red':'amber')+'">'+(fixed?'Устранено':levels[item.level])+'</span><strong>'+encode(item.title)+'</strong><small class="path">'+encode(item.file)+':'+item.line+'</small></button>';
-  $('results').innerHTML = '<div class="history" aria-label="История запусков">'+state.history.map(item=>'<button data-run="'+item.id+'" aria-pressed="'+(viewed===item.id)+'">'+encode(item.time)+'</button>').join('')+'</div>'
+  $('results').innerHTML = '<div class="history" aria-label="История запусков">'+state.history.map(item=>'<button data-run="'+item.id+'" aria-pressed="'+(viewed===item.id)+'">'+encode(item.time+(item.trigger==='schedule'?' · по расписанию':''))+'</button>').join('')+'</div>'
+    + (entry.summary?'<p>'+encode(entry.summary)+'</p>':'')
+    + (entry.delivery?.status==='sent'?'<p>Telegram · сообщение '+encode(entry.delivery.messageId)+'</p>':'')
+    + (entry.errors?.length?'<p>'+entry.errors.map(error=>encode(error.message)).join(' · ')+'</p>':'')
+    + (entry.comparison?'<p>Сравнение с базой · новые '+entry.comparison.introduced.length+' · существующие '+entry.comparison.existing.length+' · устранённые '+entry.comparison.resolved.length+'</p>':'')
     + '<h3>Открытые находки · '+entry.found.length+'</h3>'+(entry.found.length?'<div class="findings">'+entry.found.map(item=>finding(item,false)).join('')+'</div>':'<p>В выполненных блоках находок нет.</p>')
     + (entry.fixed.length?'<h3>Устранено · '+entry.fixed.length+'</h3><div class="findings">'+entry.fixed.map(item=>finding(item,true)).join('')+'</div>':'');
 }
@@ -369,6 +447,13 @@ $('results').onclick = event => {
   $('detail').showModal();
 };
 drawControls(); update(); drawResults();
+refreshLists().then(()=>{
+  const saved=state.workflowId && $('workflows').selectedOptions[0];
+  if (saved) $('workflowName').value=saved.textContent;
+  drawControls();
+}).catch(error=>message(error.message,true));
+refreshHistory().catch(error=>message(error.message,true));
+setInterval(()=>refreshHistory().catch(()=>{}),4000);
 </script>
 </body>
 </html>
