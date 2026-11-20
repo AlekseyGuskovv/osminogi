@@ -1,0 +1,20 @@
+[
+  {
+    "analyzer": "secrets",
+    "ruleId": "SECRET-01",
+    "path": "src/main/resources/application.yml",
+    "anchor": "api-key:1"
+  },
+  {
+    "analyzer": "sca",
+    "ruleId": "SCA-01",
+    "path": "build.gradle.kts",
+    "anchor": "org.springframework.boot:spring-boot-starter-web:TRAINING-POLICY-001"
+  },
+  {
+    "analyzer": "sast",
+    "ruleId": "SAST-01",
+    "path": "src/main/kotlin/training/TrainingApplication.kt",
+    "anchor": "/admin/training"
+  }
+]

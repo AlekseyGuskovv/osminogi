@@ -1,0 +1,20 @@
+{
+  "snapshot": {
+    "id": "training",
+    "files": {
+      "application.yml": "api-key: demo-training-value"
+    }
+  },
+  "finding": {
+    "id": "F-example",
+    "ruleId": "SECRET-01",
+    "nodeId": "secret",
+    "severity": "critical",
+    "title": "Ключ в настройках",
+    "path": "application.yml",
+    "line": 1,
+    "evidence": "api-key: ••••",
+    "advisoryId": null
+  },
+  "shiftedLine": 2
+}

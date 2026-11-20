@@ -1,0 +1,61 @@
+{
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "x": 0,
+      "y": 50,
+      "settings": {}
+    },
+    {
+      "id": "secrets",
+      "type": "secrets",
+      "x": 180,
+      "y": 50,
+      "settings": {}
+    },
+    {
+      "id": "sca",
+      "type": "sca",
+      "x": 360,
+      "y": 50,
+      "settings": {}
+    },
+    {
+      "id": "sast",
+      "type": "sast",
+      "x": 540,
+      "y": 50,
+      "settings": {}
+    },
+    {
+      "id": "finish",
+      "type": "finish",
+      "x": 720,
+      "y": 50,
+      "settings": {}
+    }
+  ],
+  "edges": [
+    {
+      "from": "start",
+      "to": "secrets",
+      "branch": "next"
+    },
+    {
+      "from": "secrets",
+      "to": "sca",
+      "branch": "next"
+    },
+    {
+      "from": "sca",
+      "to": "sast",
+      "branch": "next"
+    },
+    {
+      "from": "sast",
+      "to": "finish",
+      "branch": "next"
+    }
+  ]
+}
