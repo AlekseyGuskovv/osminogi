@@ -374,7 +374,7 @@ def main():
     catalog = Path(os.environ.get("GARDEN_ADVISORIES", default))
     catalog_text = catalog.read_text(encoding="utf-8-sig")
     ANALYZERS = register_analysis_handlers(load_advisories(catalog_text))
-    ANALYSIS_VERSION = "organizer-v1:" + sha256(catalog_text.encode()).hexdigest()
+    ANALYSIS_VERSION = "organizer-v2:" + sha256(catalog_text.encode()).hexdigest()
     WORD_API = WordApi(STORE, load_run, save_workflow, launch, project, condition, ANALYZERS)
     for row in STORE.list("run"):
         if row["status"] in {"queued", "running"}:

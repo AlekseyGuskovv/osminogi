@@ -5,9 +5,9 @@ import re
 TOKENS = re.compile(r'"""[\s\S]*?"""|"(?:\\.|[^"\\])*"|/\*[\s\S]*?\*/|//[^\n]*')
 
 
-def kotlin_source(text: str) -> str:
+def kotlin_source(text: str, *, keep_strings: bool = True) -> str:
     return TOKENS.sub(lambda match: re.sub(r"[^\n]", " ", match[0])
-                      if match[0].startswith(("//", "/*")) else match[0], text)
+                      if not keep_strings or match[0].startswith(("//", "/*")) else match[0], text)
 
 
 def line_at(text: str, offset: int) -> int:

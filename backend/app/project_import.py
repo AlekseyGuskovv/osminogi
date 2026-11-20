@@ -10,7 +10,7 @@ MAX_UPLOAD = 20 * 1024 * 1024
 MAX_EXPANDED = 100 * 1024 * 1024
 MAX_FILES = 5000
 MAX_SOURCE = 2 * 1024 * 1024
-SOURCE_TYPES = {".kt", ".kts", ".yaml", ".yml", ".properties", ".env", ".lockfile"}
+SOURCE_TYPES = {".kt", ".kts", ".yaml", ".yml", ".properties", ".env", ".lockfile", ".pem", ".key"}
 
 
 class ArchiveTooLarge(ValueError):
@@ -39,7 +39,8 @@ def read_project(data: bytes, snapshot_id: str) -> Snapshot:
                 if key.casefold() in seen:
                     raise ValueError("В ZIP повторяется путь.")
                 seen.add(key.casefold())
-                if entry.is_dir() or (path.suffix.lower() not in SOURCE_TYPES and path.name != ".env"):
+                if entry.is_dir() or (path.suffix.lower() not in SOURCE_TYPES
+                                      and path.name not in {".env", "libs.versions.toml"}):
                     continue
                 if entry.file_size > MAX_SOURCE:
                     raise ArchiveTooLarge("Исходный файл превышает 2 МБ.")
@@ -47,7 +48,11 @@ def read_project(data: bytes, snapshot_id: str) -> Snapshot:
                     content = source.read(MAX_SOURCE + 1)
                 if len(content) > MAX_SOURCE:
                     raise ArchiveTooLarge("Исходный файл превышает 2 МБ.")
-                files[key] = content.decode("utf-8-sig")
+                try:
+                    files[key] = content.decode("utf-8-sig")
+                except UnicodeDecodeError:
+                    if path.suffix.lower() not in {".pem", ".key"}:
+                        raise
     except (BadZipFile, UnicodeDecodeError, NotImplementedError, RuntimeError, OSError) as error:
         raise ValueError("Ожидался ZIP с исходниками в UTF-8.") from error
     if not any(PurePosixPath(name).name == "build.gradle.kts" for name in files):

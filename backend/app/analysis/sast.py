@@ -1,6 +1,7 @@
 import re
 
 from .source import kotlin_source, line_at
+from .spring_config import scan_spring_config
 from .types import Finding, Snapshot, finding
 
 
@@ -14,6 +15,7 @@ ROUTE = re.compile(r'\brequestMatchers\s*\(\s*(?:[\w.]+\s*,\s*)?"([^"\n]+)"\s*\)
 RESTRICTED = re.compile(r'\brequestMatchers\s*\(\s*(?:[\w.]+\s*,\s*)?"([^"\n]+)/\*\*"\s*\)\s*\.(?:hasRole|hasAuthority|authenticated)\(')
 OBJECT_QUERY = re.compile(r'\bfun\s+(\w+)\(\s*(\w+(?:Id|Code))\s*:[^)\n]+\)[^=\n]*=\s*\w+\.query\(\s*"(?P<sql>SELECT[^"\n]+)"', re.I)
 OWNER = re.compile(r"\b(?:customer|owner|account|tenant|user)_id\b", re.I)
+NOOP_PASSWORD = re.compile(r"\bNoOpPasswordEncoder\s*\.\s*getInstance\s*\(")
 
 
 def scan_kotlin(snapshot: Snapshot, node_id: str = "code") -> list[Finding]:
@@ -29,6 +31,12 @@ def scan_kotlin(snapshot: Snapshot, node_id: str = "code") -> list[Finding]:
             item = finding(rule, node_id, "high", title, path, line, title, anchor,
                            category="SAST", classification=kind, endLine=end_line, remediation=remediation)
             results.setdefault(item.id, item)
+
+        code = kotlin_source(content, keep_strings=False)
+        for occurrence, match in enumerate(NOOP_PASSWORD.finditer(code), 1):
+            add("SAST-PASSWORD-ENCODER", "plaintext-password-encoder",
+                "Пароли обрабатываются без хеширования", match.start(), match.end(), str(occurrence),
+                "Используйте PasswordEncoder с адаптивным хешированием, например BCryptPasswordEncoder.")
 
         for match in SQL.finditer(text):
             prefix = text[:match.start()]
@@ -64,4 +72,4 @@ def scan_kotlin(snapshot: Snapshot, node_id: str = "code") -> list[Finding]:
                 if len(clause) == 2 and OWNER.search(clause[0]) and not OWNER.search(clause[1]) and "?" in clause[1]:
                     add("SAST-OBJECT", "object-authorization", "Запрос объекта не ограничен владельцем",
                         match.start(), match.end(), match[1], "Ограничьте выборку владельцем или проверьте право доступа.")
-    return list(results.values())
+    return [*results.values(), *scan_spring_config(snapshot, node_id)]
