@@ -6,3 +6,5 @@
 |---|---|
 | feat/01-analysis-contract | `docs/analysis-example.json`: маскированная карточка и сдвиг строки |
 | feat/02-secret-scanner | Сравнить исходный YAML и вариант с переменной окружения |
+
+| feat/03-dependency-scanner | Проверить включённую и исключённую границы диапазона |
