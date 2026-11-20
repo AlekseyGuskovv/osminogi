@@ -51,7 +51,7 @@ const levels = ['Средняя', 'Высокая', 'Критическая'];
 const severities = {low:0,medium:0,high:1,critical:2};
 const analyzer = {'SECRET-01':'secrets','SCA-01':'sca','SAST-01':'sast'};
 async function api(path, data) {
-  const response = await fetch('/api/v1'+path, data === undefined ? undefined : data instanceof FormData ? {method:'POST',body:data} : {
+  const response = await fetch('/api/v1'+path+(path.includes('?')?'&':'?')+'view=demo', data === undefined ? undefined : data instanceof FormData ? {method:'POST',body:data} : {
     method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)
   });
   const body = await response.json();
@@ -284,7 +284,7 @@ function drawControls() {
 }
 function watchRun(id) {
   return new Promise((resolve,reject)=>{
-    const stream = new EventSource('/api/v1/runs/'+id+'/events');
+    const stream = new EventSource('/api/v1/runs/'+id+'/events?view=demo');
     let consecutiveErrors = 0;
     stream.onmessage = async event => {
       consecutiveErrors = 0;

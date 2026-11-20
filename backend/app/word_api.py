@@ -32,7 +32,7 @@ class WordApi:
         return [row for row in self.store.list("run") if row.get("workflowId") == workflow_id]
 
     def save(self, data, key=None):
-        prepared = {**data, "graph": to_internal(data)}
+        prepared = {**data, "graph": to_internal(data), "wordSave": True}
         return to_workflow(self.save_workflow(prepared, key))
 
     def compare_runs(self, current, older):

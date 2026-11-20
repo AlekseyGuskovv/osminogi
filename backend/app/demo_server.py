@@ -2,17 +2,21 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 from email import policy
 from email.parser import BytesParser
+from hashlib import sha256
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
 import re
 from threading import Condition, Event, Thread
+from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
 from .analysis.advisories import load_advisories
 from .analysis.registry import register_analysis_handlers
 from .analysis.types import Snapshot
+from .contract import ApiError, schedule_value, to_event, to_internal, zone
+from .word_api import WordApi
 from .ml.live import generate_report
 from .ml.live_draft import generate_workflow
 from .ml.provider import ModelError, build_provider
@@ -29,6 +33,8 @@ LINEAR = {"start", "ai", *SCAN_TYPES}
 TERMINAL = {"finish", "telegram"}
 RUNS = {}
 STORE = None
+WORD_API = None
+ANALYSIS_VERSION = None
 ANALYZERS = None
 
 
@@ -106,7 +112,7 @@ def validate_graph(graph):
 def project(snapshot_id):
     row = STORE.get("snapshot", snapshot_id) if isinstance(snapshot_id, str) else None
     if row is None:
-        raise ValueError("Выберите загруженный учебный проект.")
+        raise ApiError(422, "SNAPSHOT_REQUIRED", "Выберите загруженный учебный проект.")
     return Snapshot(row["id"], row["files"])
 
 
@@ -120,14 +126,19 @@ class Run:
 
     def emit(self, event):
         with self.changed:
-            self.events.append(event)
+            if event["type"] == "run.status":
+                self.result = {**self.result, "status": event["status"]}
+                STORE.put("run", self.id, self.result)
+            self.events.append({**event, "at": datetime.now(UTC).isoformat()})
+            STORE.put("events", self.id, self.events)
             self.changed.notify_all()
 
     def finish(self, result):
         with self.changed:
             self.result = {**self.result, **result}
             STORE.put("run", self.id, self.result)
-            self.events.append({"type": "run.finished"})
+            self.events.append({"type": "run.finished", "at": datetime.now(UTC).isoformat()})
+            STORE.put("events", self.id, self.events)
             self.changed.notify_all()
         RUNS.pop(self.id, None)
 
@@ -144,8 +155,10 @@ def execute(run, graph, snapshot, base):
     summary, delivery, integration_errors = "", {"status": "skipped"}, []
     status, delta, resolved = "succeeded", None, None
 
-    def step(node_id, state, count=None, output=""):
-        payload = {"status": state, "input": count, "output": output}
+    run.emit({"type": "run.status", "status": "running"})
+
+    def step(node_id, state, count=None, output="", **extra):
+        payload = {"status": state, "input": count, "output": output, **extra}
         steps[node_id] = payload
         run.emit({"type": "node.status", "nodeId": node_id, "step": payload})
 
@@ -177,7 +190,9 @@ def execute(run, graph, snapshot, base):
                 message_id = send_report(report)
                 delivery = {"status": "sent", "messageId": message_id}
                 output = f"Telegram принял отчёт. Номер сообщения: {message_id}."
-            step(key, "done", count, output)
+            details = ({"branch": branch, "inputFindings": [asdict(item) for item in findings.values()]}
+                       if kind == "gate" else {})
+            step(key, "done", count, output, **details)
         except (ModelError, DeliveryError) as error:
             integration_errors.append({"nodeId": key, "message": str(error)})
             if kind == "telegram":
@@ -212,7 +227,9 @@ def launch(data, trigger="manual"):
     snapshot = project(data.get("snapshotId"))
     base = project(data["baseSnapshotId"]) if data.get("baseSnapshotId") else None
     run = Run({"graph": data["graph"], "snapshotId": snapshot.id, "baseSnapshotId": base.id if base else None,
-               "trigger": trigger, "createdAt": datetime.now(UTC).isoformat()})
+               "trigger": trigger, "createdAt": datetime.now(UTC).isoformat(),
+               "workflowId": data.get("workflowId"), "workflowRevision": data.get("workflowRevision"),
+               "analysisVersion": ANALYSIS_VERSION})
     RUNS[run.id] = run
     Thread(target=execute, args=(run, validated, snapshot, base), daemon=True).start()
     return {"id": run.id, "status": "queued"}
@@ -220,10 +237,10 @@ def launch(data, trigger="manual"):
 
 def save_workflow(data, workflow_id=None):
     validate_graph(data.get("graph"))
-    snapshot_id, schedule = data.get("snapshotId"), data.get("schedule") or None
+    snapshot_id, schedule = data.get("snapshotId"), schedule_value(data.get("schedule") or None)
     if snapshot_id is not None:
         project(snapshot_id)
-    if schedule and (not isinstance(schedule, str) or not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", schedule)):
+    if schedule and not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", schedule["time"]):
         raise ValueError("Укажите время в формате ЧЧ:ММ (UTC).")
     if schedule and snapshot_id is None:
         raise ValueError("Для расписания нужен загруженный проект.")
@@ -232,18 +249,27 @@ def save_workflow(data, workflow_id=None):
         raise ValueError("Укажите короткое название сценария.")
     key = workflow_id or uuid4().hex
     row = {"id": key, "name": name.strip(), "graph": data["graph"], "snapshotId": snapshot_id, "schedule": schedule}
-    STORE.put("workflow", key, row)
-    return row
+    return STORE.write_workflow(row, data.get("revision"), require_revision=bool(data.get("wordSave")))
+
+
+def load_run(key):
+    active = RUNS.get(key)
+    return active.result if active else STORE.get("run", key)
 
 
 def scheduler(stop):
     while not stop.is_set():
         now = datetime.now(UTC)
         for workflow in STORE.list("workflow"):
-            if workflow["schedule"] == now.strftime("%H:%M"):
-                key = f"{workflow['id']}:{now.date()}"
+            schedule = schedule_value(workflow.get("schedule"))
+            if not schedule:
+                continue
+            local = now.astimezone(zone(schedule["timezone"]))
+            if schedule["time"] == local.strftime("%H:%M"):
+                key = f"{workflow['id']}:{local.date()}"
                 if STORE.claim("schedule", key):
-                    launch(workflow, "schedule")
+                    launch({**workflow, "workflowId": workflow["id"],
+                            "workflowRevision": workflow.get("revision", 1)}, "schedule")
         stop.wait(2)
 
 
@@ -259,13 +285,53 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def allowed_origin(self):
+        port = self.server.server_port
+        origins = {f"http://127.0.0.1:{port}", f"http://localhost:{port}",
+                   "http://127.0.0.1:5173", "http://localhost:5173"}
+        origins.update(origin.strip() for origin in os.environ.get("GARDEN_ALLOWED_ORIGINS", "").split(",") if origin.strip())
+        return self.headers.get("Origin") in origins
+
+    def end_headers(self):
+        if self.allowed_origin():
+            self.send_header("Access-Control-Allow-Origin", self.headers["Origin"])
+            self.send_header("Vary", "Origin")
+        super().end_headers()
+
+    def do_OPTIONS(self):
+        if not self.allowed_origin():
+            self.reply(403, {"code": "ORIGIN_DENIED", "message": "Источник запроса не разрешён."})
+            return
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Last-Event-ID")
+        self.end_headers()
+
+    def handle_error(self, error):
+        if isinstance(error, ApiError):
+            self.reply(error.status, {"code": error.code, "message": str(error)})
+        else:
+            self.reply(422, {"code": "INVALID_REQUEST", "message": str(error)})
+
     def do_GET(self):
+        request = urlsplit(self.path)
+        self.path = request.path
+        query = parse_qs(request.query)
+        demo = query.get("view") == ["demo"]
+        try:
+            self.get(query, demo)
+        except (ValueError, TypeError, KeyError) as error:
+            self.handle_error(error)
+
+    def get(self, query, demo):
         if self.path == "/":
             self.send_bytes(200, (ROOT / "index.html").read_bytes(), "text/html")
             return
         path = self.path.removeprefix("/api/v1")
         if not self.path.startswith("/api/v1/"):
             self.reply(404, {"message": "Страница не найдена."})
+            return
+        if not demo and WORD_API.get(path, query, self):
             return
         collections = {"/runs": "run", "/workflows": "workflow", "/templates": "template", "/snapshots": "snapshot"}
         if path in collections:
@@ -279,25 +345,33 @@ class Handler(BaseHTTPRequestHandler):
             run = RUNS.get(key)
             row = run.result if run else STORE.get("run", key)
             if row and action == "events":
-                self.stream(run, row)
+                self.stream(run, row, demo)
                 return
             if row and not action:
                 self.reply(200, row)
                 return
         self.reply(404, {"message": "Запуск или маршрут не найден."})
 
-    def stream(self, run, row):
+    def stream(self, run, row, demo):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
-        index = 0
+        try:
+            index = max(0, int(self.headers.get("Last-Event-ID", "0"))) if not demo else 0
+        except ValueError:
+            index = 0
         try:
             while True:
                 if not run:
-                    events = [{"type": "node.status", "nodeId": key, "step": step}
-                              for key, step in row.get("steps", {}).items()]
-                    events.append({"type": "run.finished"})
+                    saved = STORE.get("events", row["id"]) or [
+                        {"type": "node.status", "nodeId": key, "step": step}
+                        for key, step in row.get("steps", {}).items()]
+                    if not saved or saved[-1]["type"] != "run.finished":
+                        saved = [*saved, {"type": "run.finished"}]
+                    events = saved[index:]
+                    if not events:
+                        return
                 else:
                     with run.changed:
                         run.changed.wait_for(lambda: len(run.events) > index, timeout=10)
@@ -305,7 +379,9 @@ class Handler(BaseHTTPRequestHandler):
                 if not events:
                     self.wfile.write(b": heartbeat\n\n")
                 for event in events:
-                    self.wfile.write(("data: " + json.dumps(event) + "\n\n").encode())
+                    wire = event if demo else to_event(event, row["id"], index + 1, run.result if run else row)
+                    prefix = "" if demo else f"id: {index + 1}\n"
+                    self.wfile.write((prefix + "data: " + json.dumps(wire) + "\n\n").encode())
                     self.wfile.flush()
                     index += 1
                     if event["type"] == "run.finished":
@@ -345,9 +421,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         try:
+            request = urlsplit(self.path)
+            self.path = request.path
+            demo = parse_qs(request.query).get("view") == ["demo"]
             origin = self.headers.get("Origin")
-            port = self.server.server_port
-            if origin and origin not in {f"http://127.0.0.1:{port}", f"http://localhost:{port}"}:
+            if origin and not self.allowed_origin():
                 self.reply(403, {"message": "Сервер принимает запросы только из локального интерфейса."})
                 return
             path = self.path.removeprefix("/api/v1")
@@ -362,6 +440,8 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self.read_body(65536))
             if not isinstance(data, dict):
                 raise ValueError("Ожидался JSON-объект.")
+            if not demo and WORD_API.post(path, data, self):
+                return
             if path == "/runs":
                 self.reply(202, launch(data))
             elif path == "/workflows":
@@ -382,36 +462,47 @@ class Handler(BaseHTTPRequestHandler):
                                   for node in graph["nodes"]]
                 row = {"id": uuid4().hex, "name": workflow["name"], "graph": graph, "description": description}
                 STORE.put("template", row["id"], row)
-                self.reply(201, row)
+                self.reply(201, row if demo else WORD_API.template(row))
             elif path.startswith("/templates/") and path.endswith("/copy"):
                 template = STORE.get("template", path.split("/")[2])
                 if not template:
                     self.reply(404, {"message": "Шаблон не найден."})
                 else:
-                    self.reply(201, save_workflow({"name": template["name"], "graph": template["graph"]}))
+                    copied = save_workflow({"name": template["name"], "graph": template["graph"]})
+                    if not demo:
+                        from .contract import to_workflow
+                        copied = to_workflow(copied)
+                    self.reply(201, copied)
             elif path == "/workflows/draft":
                 prompt = data.get("prompt")
                 if not isinstance(prompt, str) or not 0 < len(prompt.strip()) <= 2000:
                     raise ValueError("Введите задачу длиной до 2000 символов.")
-                self.reply(200, generate_workflow(prompt.strip(), PROVIDER))
+                draft = generate_workflow(prompt.strip(), PROVIDER)
+                validate_graph(to_internal(draft))
+                self.reply(200, draft)
             else:
                 self.reply(404, {"message": "Маршрут не найден."})
         except ModelError as error:
             self.reply(503, {"code": "AI_UNAVAILABLE", "message": str(error)})
         except ArchiveTooLarge as error:
             self.reply(413, {"code": "ARCHIVE_TOO_LARGE", "message": str(error)})
-        except (ValueError, TypeError, re.error) as error:
-            self.reply(422, {"message": "Неверный формат JSON." if isinstance(error, json.JSONDecodeError) else str(error)})
+        except json.JSONDecodeError:
+            self.reply(422, {"code": "INVALID_JSON", "message": "Неверный формат JSON."})
+        except (ValueError, TypeError, KeyError, re.error) as error:
+            self.handle_error(error)
 
 
 def main():
-    global STORE, ANALYZERS
+    global STORE, ANALYZERS, WORD_API, ANALYSIS_VERSION
     STORE = Store(ROOT)
     default = ROOT / "docs/training-advisories.json"
     catalog = Path(os.environ.get("GARDEN_ADVISORIES", default))
-    ANALYZERS = register_analysis_handlers(load_advisories(catalog.read_text(encoding="utf-8-sig")))
+    catalog_text = catalog.read_text(encoding="utf-8-sig")
+    ANALYZERS = register_analysis_handlers(load_advisories(catalog_text))
+    ANALYSIS_VERSION = "organizer-v1:" + sha256(catalog_text.encode()).hexdigest()
+    WORD_API = WordApi(STORE, load_run, save_workflow, launch, project, condition)
     for row in STORE.list("run"):
-        if row["status"] == "queued":
+        if row["status"] in {"queued", "running"}:
             STORE.put("run", row["id"], {**row, "status": "failed", "ci": "error", "findings": [],
                                         "recommendations": [], "scanned": [], "steps": {},
                                         "integrationErrors": [], "summary": "", "delivery": {"status": "skipped"}})
