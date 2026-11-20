@@ -1,9 +1,8 @@
-from dataclasses import dataclass
 import json
 import os
+from pathlib import Path
+import subprocess
 from typing import Protocol
-from urllib.error import URLError
-from urllib.request import Request, urlopen
 
 
 class LlmProvider(Protocol):
@@ -14,56 +13,30 @@ class ModelError(RuntimeError):
     pass
 
 
-@dataclass(frozen=True)
-class LlmSettings:
-    kind: str
-    url: str
-    model: str
-    api_key: str = ""
-    timeout: float = 15
-
-    @classmethod
-    def from_env(cls) -> "LlmSettings":
-        return cls(os.getenv("GARDEN_LLM_KIND", "ollama"),
-                   os.getenv("GARDEN_LLM_URL", "http://localhost:11434/api/chat"),
-                   os.getenv("GARDEN_LLM_MODEL", ""),
-                   os.getenv("GARDEN_LLM_KEY", ""))
-
-
-@dataclass(frozen=True)
-class ChatProvider:
-    settings: LlmSettings
-
+class CodexProvider:
     def generate_json(self, system: str, payload: dict) -> dict:
-        settings = self.settings
-        if not settings.model:
-            raise ModelError("Модель не настроена")
-        body = {"model": settings.model, "stream": False, "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
-        ]}
-        if settings.kind == "ollama":
-            body["format"] = "json"
-        else:
-            body["response_format"] = {"type": "json_object"}
-        headers = {"Content-Type": "application/json"}
-        if settings.api_key:
-            headers["Authorization"] = f"Bearer {settings.api_key}"
-        request = Request(settings.url, json.dumps(body).encode(), headers)
+        default = Path(__file__).resolve().parents[5] / "AiStaff" / "CodexGenerator"
+        root = Path(os.environ.get("GARDEN_CODEX_DIR", default)).expanduser().resolve()
+        python = root / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+        question = system + "\nОтветь одним JSON-объектом. Входные данные:\n"
+        question += json.dumps(payload, ensure_ascii=False)
         try:
-            with urlopen(request, timeout=settings.timeout) as response:
-                result = json.loads(response.read(1_000_000))
-            message = (result["message"] if settings.kind == "ollama"
-                       else result["choices"][0]["message"])
-            data = json.loads(message["content"])
-        except (URLError, TimeoutError, ValueError, KeyError, IndexError, TypeError) as error:
-            raise ModelError("Модель недоступна или вернула неверный JSON") from error
-        if not isinstance(data, dict):
-            raise ModelError("Ожидался JSON-объект")
-        return data
+            call = subprocess.run(
+                [str(python), "examples/amqp_client.py", question,
+                 "--effort", "low", "--timeout", "25"],
+                cwd=root, capture_output=True, encoding="utf-8", timeout=30,
+                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+            )
+            result = json.loads(call.stdout)
+            if call.returncode or result["status"] != "succeeded":
+                raise ValueError("Generation failed")
+            answer = json.loads(result["answer"])
+            if not isinstance(answer, dict):
+                raise ValueError("Expected a JSON object")
+            return answer
+        except (OSError, subprocess.TimeoutExpired, ValueError, KeyError, TypeError) as error:
+            raise ModelError("CodexGenerator недоступен или вернул неверный JSON") from error
 
 
-def build_provider(settings: LlmSettings) -> LlmProvider:
-    if settings.kind not in {"ollama", "openai-compatible"}:
-        raise ValueError("Unsupported model provider")
-    return ChatProvider(settings)
+def build_provider() -> LlmProvider:
+    return CodexProvider()

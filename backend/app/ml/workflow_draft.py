@@ -4,7 +4,6 @@ from collections.abc import Callable
 from .provider import LlmProvider, ModelError
 
 
-TYPES = ["start", "secrets", "sca", "sast", "ai", "condition", "telegram", "finish"]
 PROMPT = ("Преобразуй запрос в JSON с полями checks (непустой список secrets/sca/sast), "
           "explain (bool), notify (bool), time (HH:MM или null). "
           "Не возвращай команды, ссылки, токены и настройки подключения.")
@@ -56,7 +55,7 @@ def build_draft(intent: dict, timezone: str, email: bool) -> dict:
 
 
 def draft_workflow(prompt: str, provider: LlmProvider, timezone: str = "Europe/Moscow",
-                   validate_graph: Callable[[dict], None] | None = None) -> dict:
+                   validate_graph: Callable[[dict], None] | None = None, *, include_source: bool = False) -> dict:
     email = bool(EMAIL.search(prompt))
     try:
         intent = provider.generate_json(PROMPT, {"request": prompt})
@@ -64,10 +63,10 @@ def draft_workflow(prompt: str, provider: LlmProvider, timezone: str = "Europe/M
             draft = build_draft(intent, timezone, email)
             if validate_graph:
                 validate_graph({key: value for key, value in draft.items() if key != "warnings"})
-            return draft
+            return {**draft, "source": "model"} if include_source else draft
     except (ModelError, ValueError):
         pass
     draft = build_draft(fallback_intent(prompt), timezone, email)
     if validate_graph:
         validate_graph({key: value for key, value in draft.items() if key != "warnings"})
-    return draft
+    return {**draft, "source": "fallback"} if include_source else draft

@@ -8,7 +8,7 @@ from .registry import register_analysis_handlers
 from .remediation import BEFORE, PATH, apply_training_patch, build_safe_patch
 from .score import ExpectedFinding, score_findings
 from .types import Snapshot, make_finding_id
-from ..ml.provider import LlmSettings, ModelError, build_provider
+from ..ml.provider import ModelError, build_provider
 from ..ml.recommendations import explain_findings
 from ..ml.workflow_draft import draft_workflow
 
@@ -46,21 +46,21 @@ def run_demo(live_model: bool) -> dict:
     fixed = apply_training_patch(initial, secret, "pr-2")
     repeated = Snapshot("pr-3", {**fixed.files, PATH: "\n" + initial.files[PATH]})
     after = analyze(fixed)
-    returned = analyze(repeated)
+    returned = handlers["secrets"](repeated, "secrets")
     expected = [
         ExpectedFinding(make_finding_id("SECRET-01", PATH, "api-key:1"), "secrets"),
         ExpectedFinding(make_finding_id("SCA-01", "build.gradle.kts", "demo:sample-library:DEMO-001"), "sca"),
         ExpectedFinding(make_finding_id("SAST-01", kotlin, "/admin"), "sast"),
     ]
-    provider = build_provider(LlmSettings.from_env()) if live_model else DemoProvider()
+    provider = build_provider() if live_model else DemoProvider()
     return {
-        "mode": "live-model" if live_model else "simulated-model",
+        "mode": "codex-generator" if live_model else "simulated-model",
         "fixture": "synthetic-training",
         "findings": [asdict(item) for item in found],
         "scores": {key: asdict(value) for key, value in score_findings(found, expected).items()},
         "recommendations": [asdict(row) for row in explain_findings(found, provider)],
         "offline_recommendations": [asdict(row) for row in explain_findings(found, OfflineProvider())],
-        "draft": draft_workflow("Каждый день в 14:00 ищи секреты и отправляй отчёт на почту", provider),
+        "draft": draft_workflow("Каждый день в 14:00 ищи секреты и отправляй отчёт на почту", provider, include_source=True),
         "patch": asdict(build_safe_patch(initial, secret)),
         "comparison": {
             "resolved": sorted({item.id for item in found} - {item.id for item in after}),
