@@ -1,0 +1,14 @@
+[
+  {
+    "id": "DEMO-001",
+    "group": "demo",
+    "name": "sample-library",
+    "severity": "high",
+    "ranges": [
+      {
+        "lower": "1.0.0",
+        "upper": "1.1.0"
+      }
+    ]
+  }
+]
