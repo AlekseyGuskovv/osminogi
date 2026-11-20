@@ -346,7 +346,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             origin = self.headers.get("Origin")
-            if origin and origin not in {"http://127.0.0.1:8000", "http://localhost:8000"}:
+            port = self.server.server_port
+            if origin and origin not in {f"http://127.0.0.1:{port}", f"http://localhost:{port}"}:
                 self.reply(403, {"message": "Сервер принимает запросы только из локального интерфейса."})
                 return
             path = self.path.removeprefix("/api/v1")
@@ -414,10 +415,11 @@ def main():
             STORE.put("run", row["id"], {**row, "status": "failed", "ci": "error", "findings": [],
                                         "recommendations": [], "scanned": [], "steps": {},
                                         "integrationErrors": [], "summary": "", "delivery": {"status": "skipped"}})
-    with ThreadingHTTPServer(("127.0.0.1", 8000), Handler) as server:
+    port = int(os.environ.get("GARDEN_PORT", "8000"))
+    with ThreadingHTTPServer(("127.0.0.1", port), Handler) as server:
         stop = Event()
         Thread(target=scheduler, args=(stop,), daemon=True).start()
-        print("Cyber Garden: http://127.0.0.1:8000", flush=True)
+        print(f"Cyber Garden: http://127.0.0.1:{port}", flush=True)
         try:
             server.serve_forever()
         except KeyboardInterrupt:
