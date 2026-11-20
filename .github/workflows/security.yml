@@ -1,4 +1,4 @@
-﻿name: Cyber Garden Security
+name: Cyber Garden Security
 on:
   push:
   pull_request:
@@ -18,16 +18,27 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Analyze the training project as source only
+      - name: Execute the saved security graph
         shell: bash
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
+          mkdir -p "$RUNNER_TEMP/garden-reports"
           git archive --format=zip --output="$RUNNER_TEMP/head.zip" "$HEAD_SHA:examples/kotlin-project"
           args=()
           if [[ -n "$BASE_SHA" ]] && git cat-file -e "$BASE_SHA:examples/kotlin-project"; then
             git archive --format=zip --output="$RUNNER_TEMP/base.zip" "$BASE_SHA:examples/kotlin-project"
             args+=(--base "$RUNNER_TEMP/base.zip")
           fi
-          python3 -m backend.app.analysis.scan "$RUNNER_TEMP/head.zip" "${args[@]}"
+          python3 -m backend.app.analysis.scan "$RUNNER_TEMP/head.zip" "${args[@]}" \
+            --graph docs/ci-workflow.json \
+            --report-json "$RUNNER_TEMP/garden-reports/findings.json" \
+            --report-markdown "$RUNNER_TEMP/garden-reports/findings.md"
+      - name: Upload JSON and Markdown reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cyber-garden-reports
+          path: ${{ runner.temp }}/garden-reports/
+          if-no-files-found: ignore
