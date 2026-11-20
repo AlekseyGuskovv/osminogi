@@ -15,7 +15,7 @@ from .analysis.advisories import load_advisories
 from .analysis.registry import register_analysis_handlers
 from .analysis.types import Snapshot
 from .connections import deliver
-from .contract import ApiError, schedule_value, to_event, to_internal, zone
+from .contract import ApiError, schedule_value, to_event, to_internal, to_workflow, zone
 from .word_api import WordApi
 from .engine import condition, execute, validate_graph
 from .api_schema import OPENAPI
@@ -343,8 +343,6 @@ class Handler(BaseHTTPRequestHandler):
                                 node["channelId"] = None
                     copied = save_workflow({"name": template["name"], "graph": graph})
                     if not demo:
-                        from .connections import deliver
-from .contract import to_workflow
                         copied = to_workflow(copied)
                     self.reply(201, copied)
             elif path == "/workflows/draft":

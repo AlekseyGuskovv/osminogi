@@ -6,7 +6,7 @@ def generate_report(findings, provider):
     if not findings:
         return "Проверка завершена. Находок нет.", []
     payload = {"findings": [{"id": item.id, "ruleId": item.ruleId, "severity": item.severity,
-                            "title": item.title} for item in findings]}
+                            "title": item.title, "class": item.classification} for item in findings]}
     raw = provider.generate_json(
         "Верни русский JSON: summary (краткий итог) и recommendations "
         "(список с findingId, explanation, action для всех ID). "

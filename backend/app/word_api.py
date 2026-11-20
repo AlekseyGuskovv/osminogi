@@ -32,7 +32,8 @@ class WordApi:
         return row
 
     def runs(self, workflow_id):
-        return [row for row in self.store.list("run") if row.get("workflowId") == workflow_id]
+        rows = [row for row in self.store.list("run") if row.get("workflowId") == workflow_id]
+        return sorted(rows, key=lambda row: row.get("createdAt", ""), reverse=True)
 
     def save(self, data, key=None):
         prepared = {**data, "graph": to_internal(data), "wordSave": True}

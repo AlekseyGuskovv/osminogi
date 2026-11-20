@@ -59,3 +59,27 @@ $env:GARDEN_TELEGRAM_CHAT_ID = Read-Host 'Числовой chatId нужного
 - [Зелёный CI на исправленном проекте](https://github.com/AlekseyGuskovv/osminogi/actions/runs/44776191238)
 
 Доставка в закрытый Telegram-чат ждёт настроенного бота и подтверждения целевого чата. Набор организаторов ещё не получен.
+
+
+## API для фронтенда · Word v2
+
+Запускайте тот же модуль backend.app.demo_server. Существующая SQLite открывается без пересоздания. Для шифрования Telegram-подключений и часовых поясов установите requirements.txt в окружение проекта. Интерфейс по умолчанию слушает только 127.0.0.1. Схема доступна на /openapi.json, API — на /api/v1. Для Vite уже разрешены localhost:5173 и 127.0.0.1:5173. Другой доверенный адрес задаётся через GARDEN_ALLOWED_ORIGINS.
+
+1. Сохраните WorkflowDraft через POST /api/v1/workflows. При последующем POST /workflows/{id}/save передайте текущую revision. 409 REVISION_CONFLICT означает, что интерфейсу нужно перечитать сценарий.
+2. Загрузите ZIP как multipart-поле file в /api/v1/snapshots/import. Вызовите POST /api/v1/workflows/{id}/runs с snapshotId. Для сравнения с базой добавьте baseSnapshotId.
+3. Из ответа 202 возьмите id. Подпишитесь через EventSource на /api/v1/runs/{id}/events. Каждое сообщение содержит seq, runId, type, at, data. После run.finished перечитайте GET /api/v1/runs/{id} и закройте поток. Возобновление использует Last-Event-ID.
+4. Экспорт: GET /api/v1/runs/{id}/report?format=json или format=markdown. /comparison отвечает за состав изменений, ci.status — за решение проверки. Существующая критическая находка тоже даёт failed.
+5. GET /api/v1/connections возвращает доступные подключения без токенов. Для POST нового подключения укажите серверный ключ GARDEN_CONNECTION_KEY в формате Fernet. Существующий чат из окружения доступен как telegram-env. Для локальных рабочих пространств можно задать GARDEN_WORKSPACE_ID на экземпляре сервера; графы и запуски раздельны, каталог шаблонов общий.
+6. Текущий HTML использует явный режим view=demo. Фронтенд по Word v2 использует обычные маршруты без этого параметра.
+
+## Открытый набор организаторов
+
+Внешний проект, эталон и справочник хранятся в TBagirov/training. Для воспроизводимой проверки используйте commit fe1fcbe. Нужен ZIP содержимого training-project; не запускайте Gradle для статического анализа. Пример:
+
+    git clone https://github.com/TBagirov/training.git organizer-training
+    git -C organizer-training archive --format=zip -o ../organizer-training.zip fe1fcbe:training-project
+    ..\.venv\Scripts\python.exe -m backend.app.analysis.scan organizer-training.zip --advisories organizer-training/vulnerability-database/vulnerabilities.json --ground-truth organizer-training/ground-truth/training-findings.json --graph docs/ci-workflow.json --report-json findings.json --report-markdown findings.md
+
+Подтверждённый открытый замер: SECRET 5/5, SCA 5/5, SAST 5/5; пропусков, лишних находок и срабатываний на шести контрольных примерах нет. JSON и Markdown строятся из одного массива. GitHub Actions использует общий исполнитель и публикует оба формата как артефакты.
+
+Приёмка Word v2: импорт открытого ZIP, конфликт ревизии, возобновление SSE, 15 находок и оба отчёта, проигрывание условия, идемпотентная учебная правка, история возвращения, независимая копия шаблона, шифрование подключения и живой черновик CodexGenerator. Фронтенд команды пока не предоставлен. Скрытый набор не проверялся.
