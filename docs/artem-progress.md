@@ -5,3 +5,4 @@
 | Ветка | Что можно посмотреть |
 |---|---|
 | feat/01-analysis-contract | `docs/analysis-example.json`: маскированная карточка и сдвиг строки |
+| feat/02-secret-scanner | Сравнить исходный YAML и вариант с переменной окружения |
