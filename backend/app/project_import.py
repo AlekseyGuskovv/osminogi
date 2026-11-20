@@ -10,7 +10,7 @@ MAX_UPLOAD = 20 * 1024 * 1024
 MAX_EXPANDED = 100 * 1024 * 1024
 MAX_FILES = 5000
 MAX_SOURCE = 2 * 1024 * 1024
-SOURCE_TYPES = {".kt", ".kts", ".yaml", ".yml", ".properties", ".env"}
+SOURCE_TYPES = {".kt", ".kts", ".yaml", ".yml", ".properties", ".env", ".lockfile"}
 
 
 class ArchiveTooLarge(ValueError):
@@ -52,7 +52,6 @@ def read_project(data: bytes, snapshot_id: str) -> Snapshot:
         raise ValueError("Ожидался ZIP с исходниками в UTF-8.") from error
     if not any(PurePosixPath(name).name == "build.gradle.kts" for name in files):
         raise ValueError("В ZIP отсутствует build.gradle.kts.")
-    # Accept archives unpacked either at the root or under a single project directory.
     if all("/" in name for name in files) and len({name.split("/", 1)[0] for name in files}) == 1:
         files = {name.split("/", 1)[1]: value for name, value in files.items()}
     return Snapshot(snapshot_id, files)
