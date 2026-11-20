@@ -4,12 +4,14 @@ import json
 from pathlib import Path
 import sys
 
+from ..contract import to_internal
+from ..engine import execute_headless
 from ..project_import import MAX_UPLOAD, read_project
 from .advisories import load_advisories
 from .registry import register_analysis_handlers
 from .report import markdown, score_submission, submission
 from .score import ExpectedFinding, score_findings
-from .types import make_finding_id
+from .types import Finding, make_finding_id
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -40,13 +42,25 @@ def main():
     parser.add_argument("--advisories", type=Path, default=CATALOG)
     parser.add_argument("--expected", type=Path)
     parser.add_argument("--ground-truth", type=Path)
+    parser.add_argument("--graph", type=Path)
     parser.add_argument("--report-json", type=Path)
     parser.add_argument("--report-markdown", type=Path)
     args = parser.parse_args()
     try:
         advisories = load_advisories(args.advisories.read_text(encoding="utf-8-sig"))
-        head = analyze_snapshot(load_archive(args.archive), advisories)
-        base = analyze_snapshot(load_archive(args.base), advisories) if args.base else {}
+        snapshot = load_archive(args.archive)
+        base_snapshot = load_archive(args.base) if args.base else None
+        comparison, analysis_error = None, False
+        if args.graph:
+            graph = to_internal(json.loads(args.graph.read_text(encoding="utf-8-sig")))
+            executed = execute_headless(graph, snapshot, base_snapshot, register_analysis_handlers(advisories))
+            head = {row["id"]: Finding(**row) for row in executed["findings"]}
+            comparison = executed["comparison"]
+            analysis_error = executed["ci"] == "error"
+            base = {}
+        else:
+            head = analyze_snapshot(snapshot, advisories)
+            base = analyze_snapshot(base_snapshot, advisories) if base_snapshot else {}
         report = submission([asdict(item) for item in head.values()])
         if args.report_json:
             args.report_json.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -60,8 +74,9 @@ def main():
         print(json.dumps({"status": "error", "message": str(error)}), file=sys.stderr)
         return 2
     blocked = any(row.severity == "critical" for row in head.values())
-    result = {"status": "failed" if blocked else "passed", "findings": list(report["findings"]),
-              "comparison": {"introduced": sorted(head.keys() - base.keys()),
+    result = {"status": "error" if analysis_error else "failed" if blocked else "passed",
+              "findings": list(report["findings"]),
+              "comparison": comparison or {"introduced": sorted(head.keys() - base.keys()),
                              "existing": sorted(head.keys() & base.keys()),
                              "resolved": sorted(base.keys() - head.keys())}}
     if metrics is not None:
@@ -69,7 +84,7 @@ def main():
     if organizer is not None:
         result["organizerScores"] = organizer
     print(json.dumps(result, indent=2))
-    return int(blocked)
+    return 2 if analysis_error else int(blocked)
 
 
 if __name__ == "__main__":
