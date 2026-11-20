@@ -10,5 +10,17 @@
         "upper": "1.1.0"
       }
     ]
+  },
+  {
+    "id": "TRAINING-POLICY-001",
+    "group": "org.springframework.boot",
+    "name": "spring-boot-starter-web",
+    "severity": "high",
+    "ranges": [
+      {
+        "lower": "3.4.0",
+        "upper": "3.4.1"
+      }
+    ]
   }
 ]
