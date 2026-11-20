@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import re
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -13,7 +14,7 @@ def call_telegram(method, payload):
     token = os.environ.get("GARDEN_TELEGRAM_BOT_TOKEN", "").strip()
     if not token:
         raise DeliveryError("Токен Telegram не настроен.")
-    if not __import__("re").fullmatch(r"\d+:[A-Za-z0-9_-]+", token):
+    if not re.fullmatch(r"\d+:[A-Za-z0-9_-]+", token):
         raise DeliveryError("Токен Telegram имеет неверный формат.")
     request = Request(f"https://api.telegram.org/bot{token}/{method}",
                       json.dumps(payload).encode(), {"Content-Type": "application/json"})
