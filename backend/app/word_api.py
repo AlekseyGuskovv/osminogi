@@ -5,6 +5,7 @@ from .analysis.remediation import apply_training_patch, build_safe_patch
 from .analysis.report import markdown, submission
 from .analysis.types import Finding
 from .connections import connections, save_connection
+from .engine import SCAN_TYPES
 from .contract import ApiError, SEVERITIES, to_internal, to_run, to_workflow
 
 
@@ -13,8 +14,9 @@ def missing(message):
 
 
 class WordApi:
-    def __init__(self, store, load_run, save_workflow, launch, project, condition):
+    def __init__(self, store, load_run, save_workflow, launch, project, condition, analyzers):
         self.store, self.load_run = store, load_run
+        self.analyzers = analyzers
         self.save_workflow, self.launch, self.project, self.condition = save_workflow, launch, project, condition
 
     def workflow(self, key):
@@ -77,6 +79,8 @@ class WordApi:
         facts = [Finding(**item) for item in inputs]
         branch = "yes" if self.condition({**node, "threshold": threshold}, facts) else "no"
         nodes = {item["id"]: item for item in graph["nodes"]}
+        snapshot = self.project(row["snapshotId"])
+        findings = {item.id: item for item in facts}
         source, first = node_id, branch
         while True:
             edge = next((item for item in graph["edges"] if item["source"] == source and item["branch"] == branch), None)
@@ -86,10 +90,12 @@ class WordApi:
             target = nodes[source]
             if target["type"] in {"telegram", "finish"}:
                 return {"nodeId": node_id, "value": value, "branch": first, "wouldNotify": target["type"] == "telegram"}
-            if target["type"] in {"gate", "secrets", "deps", "code"}:
-                # No reliable prediction beyond an additional scanner or decision.
-                return {"nodeId": node_id, "value": value, "branch": first, "wouldNotify": None}
+            kind = target["type"]
             branch = ""
+            if kind in SCAN_TYPES:
+                findings.update({item.id: item for item in self.analyzers[SCAN_TYPES[kind]](snapshot, source)})
+            elif kind == "gate":
+                branch = "yes" if self.condition(target, list(findings.values())) else "no"
 
     def fix(self, row, action, data):
         snapshot = self.project(row["snapshotId"])

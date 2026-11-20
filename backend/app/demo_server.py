@@ -1,4 +1,3 @@
-from dataclasses import asdict
 from datetime import UTC, datetime
 from email import policy
 from email.parser import BytesParser
@@ -18,96 +17,21 @@ from .analysis.types import Snapshot
 from .connections import deliver
 from .contract import ApiError, schedule_value, to_event, to_internal, zone
 from .word_api import WordApi
-from .ml.live import generate_report
+from .engine import condition, execute, validate_graph
+from .api_schema import OPENAPI
 from .ml.live_draft import generate_workflow
 from .ml.provider import ModelError, build_provider
 from .project_import import ArchiveTooLarge, MAX_UPLOAD, read_project
 from .store import Store
-from .telegram import DeliveryError
 
 
 ROOT = Path(__file__).resolve().parents[2]
 PROVIDER = build_provider()
-SCAN_TYPES = {"secrets": "secrets", "deps": "sca", "code": "sast"}
-LEVELS = {"low": -1, "medium": 0, "high": 1, "critical": 2}
-LINEAR = {"start", "ai", *SCAN_TYPES}
-TERMINAL = {"finish", "telegram"}
 RUNS = {}
 STORE = None
 WORD_API = None
 ANALYSIS_VERSION = None
 ANALYZERS = None
-
-
-def condition(node, findings):
-    metric, value = node.get("metric", "severity"), node.get("threshold", 2)
-    if metric == "severity" and type(value) is int and value in (-1, 0, 1, 2):
-        return any(LEVELS[item.severity] >= value for item in findings)
-    if metric == "count" and type(value) is int and 0 <= value <= 5000:
-        return len(findings) >= value
-    if metric == "title":
-        # Accept ordinary patterns without groups, backreferences or nested repetition.
-        if (isinstance(value, str) and 0 < len(value) <= 80
-                and not any(char in value for char in "(){}\\")
-                and len(re.findall(r"[*+?]", value)) <= 1):
-            pattern = re.compile(value, re.IGNORECASE)
-            return any(pattern.search(item.title) for item in findings)
-    raise ValueError("Неверное условие ветвления.")
-
-
-def validate_graph(graph):
-    if not isinstance(graph, dict):
-        raise ValueError("Укажите граф.")
-    nodes, edges = graph.get("nodes"), graph.get("edges")
-    if not isinstance(nodes, list) or not 1 <= len(nodes) <= 50 or not isinstance(edges, list) or len(edges) > 100:
-        raise ValueError("Добавьте от 1 до 50 блоков и до 100 связей.")
-    by_id, links = {}, {}
-    for node in nodes:
-        if not isinstance(node, dict):
-            raise ValueError("Неверный формат блока.")
-        key, kind = node.get("id"), node.get("type")
-        if not isinstance(key, str) or not re.fullmatch(r"[\w-]{1,80}", key) or key in by_id:
-            raise ValueError("У каждого блока должен быть свой ID.")
-        if not isinstance(kind, str) or kind not in LINEAR | TERMINAL | {"gate"}:
-            raise ValueError("Неизвестный тип блока.")
-        if any(type(node.get(axis)) not in (int, float) or not 0 <= node[axis] <= 10000 for axis in ("x", "y")):
-            raise ValueError("Неверные координаты блока.")
-        if kind == "gate":
-            condition(node, [])
-        by_id[key], links[key] = node, {}
-    for edge in edges:
-        if not isinstance(edge, dict):
-            raise ValueError("Неверный формат связи.")
-        source, target, branch = (edge.get(key) for key in ("source", "target", "branch"))
-        if (not all(isinstance(value, str) for value in (source, target, branch))
-                or source not in by_id or target not in by_id or branch in links[source]):
-            raise ValueError("Проверьте связи между блоками.")
-        links[source][branch] = target
-    starts = [key for key, node in by_id.items() if node["type"] == "start"]
-    if len(starts) != 1:
-        raise ValueError("Добавьте ровно один блок «Запуск».")
-    for key, node in by_id.items():
-        kind = node["type"]
-        expected = {""} if kind in LINEAR else {"yes", "no"} if kind == "gate" else set()
-        if links[key].keys() != expected:
-            raise ValueError("Соедините все выходы, включая обе ветки условия.")
-    seen, visiting = set(), set()
-
-    def visit(key):
-        if key in visiting:
-            raise ValueError("В сценарии есть цикл.")
-        if key in seen:
-            return
-        visiting.add(key)
-        for target in links[key].values():
-            visit(target)
-        visiting.remove(key)
-        seen.add(key)
-
-    visit(starts[0])
-    if seen != by_id.keys():
-        raise ValueError("Соедините все блоки с запуском или удалите лишние.")
-    return by_id, links, starts[0]
 
 
 def project(snapshot_id):
@@ -144,87 +68,15 @@ class Run:
         RUNS.pop(self.id, None)
 
 
-def compare(findings, previous):
-    return {"introduced": sorted(findings.keys() - previous.keys()),
-            "existing": sorted(findings.keys() & previous.keys()),
-            "resolved": sorted(previous.keys() - findings.keys())}
-
-
-def execute(run, graph, snapshot, base):
-    nodes, links, key = graph
-    findings, advice, steps, scanned = {}, {}, {}, set()
-    summary, delivery, integration_errors = "", {"status": "skipped"}, []
-    status, delta, resolved = "succeeded", None, None
-
-    run.emit({"type": "run.status", "status": "running"})
-
-    def step(node_id, state, count=None, output="", **extra):
-        payload = {"status": state, "input": count, "output": output, **extra}
-        steps[node_id] = payload
-        run.emit({"type": "node.status", "nodeId": node_id, "step": payload})
-
-    while key is not None:
-        kind = nodes[key]["type"]
-        count, branch = len(findings), ""
-        step(key, "running", count)
-        output = f"Находок на выходе: {count}"
-        try:
-            if kind == "start":
-                output = f"Снимок {snapshot.id}"
-            elif kind in SCAN_TYPES:
-                analyzer = SCAN_TYPES[kind]
-                rows = ANALYZERS[analyzer](snapshot, key)
-                scanned.add(analyzer)
-                findings.update({item.id: item for item in rows})
-                output = "\n".join(f"{item.title} · {item.path}:{item.line}" for item in rows) or "Находок нет."
-            elif kind == "ai":
-                summary, rows = generate_report(list(findings.values()), PROVIDER)
-                advice.update({row.findingId: row for row in rows})
-                output = summary
-            elif kind == "gate":
-                branch = "yes" if condition(nodes[key], list(findings.values())) else "no"
-                output = "Ветка: " + ("Да" if branch == "yes" else "Нет")
-            elif kind == "telegram":
-                rows = [f"{item.severity.upper()} · {item.title} · {item.path}:{item.line}"
-                        for item in findings.values()]
-                report = "\n".join(["Cyber Garden", summary or f"Найдено: {count}", *rows])
-                message_id = deliver(STORE, nodes[key], report)
-                delivery = {"status": "sent", "messageId": message_id}
-                output = f"Telegram принял отчёт. Номер сообщения: {message_id}."
-            details = ({"branch": branch, "inputFindings": [asdict(item) for item in findings.values()]}
-                       if kind == "gate" else {})
-            step(key, "done", count, output, **details)
-        except (ModelError, DeliveryError) as error:
-            integration_errors.append({"nodeId": key, "message": str(error)})
-            if kind == "telegram":
-                delivery = {"status": "failed", "message": str(error)}
-            step(key, "failed", count, str(error))
-        except Exception:
-            step(key, "failed", count, "Не удалось выполнить анализ.")
-            status = "failed"
-            break
-        key = links[key].get(branch)
-    for node_id in nodes.keys() - steps.keys():
-        step(node_id, "skipped")
-    if base is not None and status == "succeeded":
-        try:
-            previous = {row.id: row for name in scanned for row in ANALYZERS[name](base, name)}
-            delta = compare(findings, previous)
-            resolved = [asdict(previous[key]) for key in delta["resolved"]]
-        except (ValueError, KeyError):
-            status = "failed"
-    ci = ("error" if status == "failed" else
-          "failed" if any(item.severity == "critical" for item in findings.values()) else
-          "passed" if scanned else "unchecked")
-    run.finish({"status": "partial" if status == "succeeded" and integration_errors else status,
-                "ci": ci, "findings": [asdict(item) for item in findings.values()],
-                "recommendations": [asdict(row) for row in advice.values()], "comparison": delta,
-                "resolvedFindings": resolved, "scanned": sorted(scanned), "steps": steps, "delivery": delivery,
-                "summary": summary, "integrationErrors": integration_errors})
+def checked_graph(graph):
+    try:
+        return validate_graph(graph)
+    except (ValueError, TypeError, KeyError, re.error) as error:
+        raise ApiError(422, "INVALID_GRAPH", "Некорректный граф: " + str(error)) from error
 
 
 def launch(data, trigger="manual"):
-    validated = validate_graph(data.get("graph"))
+    validated = checked_graph(data.get("graph"))
     snapshot = project(data.get("snapshotId"))
     base = project(data["baseSnapshotId"]) if data.get("baseSnapshotId") else None
     run = Run({"graph": data["graph"], "snapshotId": snapshot.id, "baseSnapshotId": base.id if base else None,
@@ -232,12 +84,14 @@ def launch(data, trigger="manual"):
                "workflowId": data.get("workflowId"), "workflowRevision": data.get("workflowRevision"),
                "analysisVersion": ANALYSIS_VERSION})
     RUNS[run.id] = run
-    Thread(target=execute, args=(run, validated, snapshot, base), daemon=True).start()
+    Thread(target=execute, args=(run, validated, snapshot, base, ANALYZERS, PROVIDER,
+                                 lambda node, report: deliver(STORE, node, report)),
+           kwargs={"require_complete": trigger == "ci"}, daemon=True).start()
     return {"id": run.id, "status": "queued"}
 
 
 def save_workflow(data, workflow_id=None):
-    validate_graph(data.get("graph"))
+    checked_graph(data.get("graph"))
     snapshot_id, schedule = data.get("snapshotId"), schedule_value(data.get("schedule") or None)
     if snapshot_id is not None:
         project(snapshot_id)
@@ -276,6 +130,8 @@ def scheduler(stop):
 
 class Handler(BaseHTTPRequestHandler):
     def reply(self, status, data):
+        if status >= 400 and "code" not in data:
+            data = {"code": {403: "ORIGIN_DENIED", 404: "NOT_FOUND", 422: "INVALID_REQUEST"}.get(status, "ERROR"), **data}
         self.send_bytes(status, json.dumps(data, ensure_ascii=False).encode(), "application/json")
 
     def send_bytes(self, status, body, kind):
@@ -325,6 +181,9 @@ class Handler(BaseHTTPRequestHandler):
             self.handle_error(error)
 
     def get(self, query, demo):
+        if self.path in {"/openapi.json", "/api/v1/openapi.json"}:
+            self.reply(200, OPENAPI)
+            return
         if self.path == "/":
             self.send_bytes(200, (ROOT / "index.html").read_bytes(), "text/html")
             return
@@ -431,7 +290,12 @@ class Handler(BaseHTTPRequestHandler):
                 return
             path = self.path.removeprefix("/api/v1")
             if self.path == "/api/v1/snapshots/import":
-                self.import_archive()
+                try:
+                    self.import_archive()
+                except ArchiveTooLarge:
+                    raise
+                except ValueError as error:
+                    raise ApiError(422, "INVALID_ARCHIVE", str(error)) from error
                 return
             if not self.path.startswith("/api/v1/"):
                 self.reply(404, {"message": "Маршрут не найден."})
@@ -461,7 +325,10 @@ class Handler(BaseHTTPRequestHandler):
                 graph = workflow["graph"]
                 graph["nodes"] = [{k: v for k, v in node.items() if k not in {"schedule", "channelId"}}
                                   for node in graph["nodes"]]
-                row = {"id": uuid4().hex, "name": workflow["name"], "graph": graph, "description": description}
+                name = data.get("name", workflow["name"])
+                if not isinstance(name, str) or not 0 < len(name.strip()) <= 100:
+                    raise ValueError("Укажите название шаблона.")
+                row = {"id": uuid4().hex, "name": name.strip(), "graph": graph, "description": description}
                 STORE.put("template", row["id"], row)
                 self.reply(201, row if demo else WORD_API.template(row))
             elif path.startswith("/templates/") and path.endswith("/copy"):
@@ -485,7 +352,10 @@ from .contract import to_workflow
                 if not isinstance(prompt, str) or not 0 < len(prompt.strip()) <= 2000:
                     raise ValueError("Введите задачу длиной до 2000 символов.")
                 draft = generate_workflow(prompt.strip(), PROVIDER)
-                validate_graph(to_internal(draft))
+                try:
+                    validate_graph(to_internal(draft))
+                except (ValueError, TypeError, KeyError, re.error) as error:
+                    raise ModelError("CodexGenerator вернул недопустимый граф.") from error
                 self.reply(200, draft)
             else:
                 self.reply(404, {"message": "Маршрут не найден."})
@@ -507,7 +377,7 @@ def main():
     catalog_text = catalog.read_text(encoding="utf-8-sig")
     ANALYZERS = register_analysis_handlers(load_advisories(catalog_text))
     ANALYSIS_VERSION = "organizer-v1:" + sha256(catalog_text.encode()).hexdigest()
-    WORD_API = WordApi(STORE, load_run, save_workflow, launch, project, condition)
+    WORD_API = WordApi(STORE, load_run, save_workflow, launch, project, condition, ANALYZERS)
     for row in STORE.list("run"):
         if row["status"] in {"queued", "running"}:
             STORE.put("run", row["id"], {**row, "status": "failed", "ci": "error", "findings": [],
