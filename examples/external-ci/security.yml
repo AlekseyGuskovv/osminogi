@@ -1,0 +1,40 @@
+# Copy to .github/workflows/cyber-garden.yml in the checked repository.
+name: Cyber Garden
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Cyber Garden security scan
+    # Use this Windows runner only with trusted branches in your private demo repository.
+    if: github.event.repository.private && github.event.pull_request.head.repo.id == github.event.pull_request.base.repo.id
+    runs-on: [self-hosted, Windows, cyber-garden]
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Compare PR snapshots
+        shell: powershell
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GARDEN_WORKFLOW_ID: ${{ vars.GARDEN_WORKFLOW_ID }}
+          GARDEN_PYTHON: ${{ vars.GARDEN_PYTHON }}
+          GARDEN_PORT: ${{ vars.GARDEN_PORT || '8000' }}
+          GARDEN_PROJECT_DIR: ${{ vars.GARDEN_PROJECT_DIR || '.' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (!$env:GARDEN_WORKFLOW_ID -or !$env:GARDEN_PYTHON) {
+            throw 'Set the GARDEN_WORKFLOW_ID and GARDEN_PYTHON repository variables.'
+          }
+          & $env:GARDEN_PYTHON .github/scripts/check_cyber_garden.py `
+            --base $env:BASE_SHA --head $env:HEAD_SHA --workflow-id $env:GARDEN_WORKFLOW_ID `
+            --port $env:GARDEN_PORT --project-dir $env:GARDEN_PROJECT_DIR
+          exit $LASTEXITCODE
