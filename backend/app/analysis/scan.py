@@ -29,7 +29,7 @@ def analyze_snapshot(snapshot, advisories):
 def read_expected(path):
     return [
         ExpectedFinding(make_finding_id(row["ruleId"], row["path"], row["anchor"]), row["analyzer"])
-        for row in json.loads(path.read_text(encoding="utf-8"))
+        for row in json.loads(path.read_text(encoding="utf-8-sig"))
     ]
 
 
@@ -44,7 +44,7 @@ def main():
     parser.add_argument("--report-markdown", type=Path)
     args = parser.parse_args()
     try:
-        advisories = load_advisories(args.advisories.read_text(encoding="utf-8"))
+        advisories = load_advisories(args.advisories.read_text(encoding="utf-8-sig"))
         head = analyze_snapshot(load_archive(args.archive), advisories)
         base = analyze_snapshot(load_archive(args.base), advisories) if args.base else {}
         report = submission([asdict(item) for item in head.values()])
@@ -54,7 +54,7 @@ def main():
             args.report_markdown.write_text(markdown(report), encoding="utf-8")
         metrics = (score_findings(list(head.values()), read_expected(args.expected))
                    if args.expected else None)
-        organizer = (score_submission(report, json.loads(args.ground_truth.read_text(encoding="utf-8")))
+        organizer = (score_submission(report, json.loads(args.ground_truth.read_text(encoding="utf-8-sig")))
                      if args.ground_truth else None)
     except (OSError, ValueError, TypeError, KeyError) as error:
         print(json.dumps({"status": "error", "message": str(error)}), file=sys.stderr)

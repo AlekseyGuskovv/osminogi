@@ -409,7 +409,7 @@ def main():
     STORE = Store(ROOT)
     default = ROOT / "docs/training-advisories.json"
     catalog = Path(os.environ.get("GARDEN_ADVISORIES", default))
-    ANALYZERS = register_analysis_handlers(load_advisories(catalog.read_text(encoding="utf-8")))
+    ANALYZERS = register_analysis_handlers(load_advisories(catalog.read_text(encoding="utf-8-sig")))
     for row in STORE.list("run"):
         if row["status"] == "queued":
             STORE.put("run", row["id"], {**row, "status": "failed", "ci": "error", "findings": [],
