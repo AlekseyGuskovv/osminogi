@@ -28,7 +28,7 @@ class OfflineProvider:
         raise ModelError("Учебная имитация сбоя")
 
 
-def run_demo(live_model: bool) -> dict:
+def training_fixture():
     catalog = Path(__file__).resolve().parents[3] / "docs" / "training-advisories.json"
     handlers = register_analysis_handlers(load_advisories(catalog.read_text(encoding="utf-8")))
     kotlin = "src/main/kotlin/demo/SecurityConfig.kt"
@@ -37,6 +37,13 @@ def run_demo(live_model: bool) -> dict:
         "build.gradle.kts": 'implementation("demo:sample-library:1.0.0")\n',
         kotlin: 'HttpSecurity\nrequestMatchers("/admin").permitAll()\n',
     })
+
+    return initial, handlers
+
+
+def run_demo(live_model: bool) -> dict:
+    initial, handlers = training_fixture()
+    kotlin = "src/main/kotlin/demo/SecurityConfig.kt"
 
     def analyze(snapshot: Snapshot):
         return [item for name, handler in handlers.items() for item in handler(snapshot, name)]
