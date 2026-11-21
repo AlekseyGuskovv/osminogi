@@ -1,13 +1,14 @@
 import argparse
 from dataclasses import asdict
 import json
+import os
 from pathlib import Path
 import sys
 
 from ..contract import to_internal
-from ..engine import execute_headless
+from ..engine import REQUIRED_SCANS, execute_headless
 from ..project_import import MAX_UPLOAD, read_project
-from .advisories import load_advisories
+from .advisories import catalog_version, load_advisories
 from .registry import register_analysis_handlers
 from .report import markdown, score_submission, submission
 from .score import ExpectedFinding, score_findings
@@ -25,6 +26,7 @@ def load_archive(path):
 
 def analyze_snapshot(snapshot, advisories):
     return {row.id: row for name, handler in register_analysis_handlers(advisories).items()
+            if name in REQUIRED_SCANS
             for row in handler(snapshot, name)}
 
 
@@ -39,7 +41,7 @@ def main():
     parser = argparse.ArgumentParser(description="Defensive scan of a training Kotlin ZIP")
     parser.add_argument("archive", type=Path)
     parser.add_argument("--base", type=Path)
-    parser.add_argument("--advisories", type=Path, default=CATALOG)
+    parser.add_argument("--advisories", type=Path, default=Path(os.environ.get("GARDEN_ADVISORIES", CATALOG)))
     parser.add_argument("--expected", type=Path)
     parser.add_argument("--ground-truth", type=Path)
     parser.add_argument("--graph", type=Path)
@@ -47,7 +49,8 @@ def main():
     parser.add_argument("--report-markdown", type=Path)
     args = parser.parse_args()
     try:
-        advisories = load_advisories(args.advisories.read_text(encoding="utf-8-sig"))
+        catalog = args.advisories.read_text(encoding="utf-8-sig")
+        advisories = load_advisories(catalog)
         snapshot = load_archive(args.archive)
         base_snapshot = load_archive(args.base) if args.base else None
         comparison, analysis_error = None, False
@@ -75,6 +78,7 @@ def main():
         return 2
     blocked = any(row.severity == "critical" for row in head.values())
     result = {"status": "error" if analysis_error else "failed" if blocked else "passed",
+              "analysisVersion": catalog_version(catalog),
               "findings": list(report["findings"]),
               "comparison": comparison or {"introduced": sorted(head.keys() - base.keys()),
                              "existing": sorted(head.keys() & base.keys()),

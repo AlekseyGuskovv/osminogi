@@ -12,6 +12,27 @@ ENV_FALLBACK = re.compile(r"\b(?:val|var)\s+(?P<name>\w+)\s*=\s*System\.getenv\(
 BEARER = re.compile(r"\bsetBearerAuth\(\s*(\w+)\s*\)")
 CONCAT = re.compile(r"\b(?:val|var)\s+(\w+)\s*=\s*(\w+)\s*\+\s*(\w+)\s*(?:$|;)", re.M)
 PLACEHOLDER = re.compile(r"^(?:example|sample|placeholder|changeme|replace[-_ ]?me|null|~|<[^>]+>)$", re.I)
+PEM_NEWLINE = r"(?:\r?\n|(?:\\r)?\\n)"
+PRIVATE_KEY = re.compile(
+    r"-----BEGIN (?P<kind>(?:(?:RSA|EC|DSA|OPENSSH|ENCRYPTED) )?PRIVATE KEY)-----[ \t]*"
+    + PEM_NEWLINE + r"(?:[ \t]*[A-Za-z0-9+/=]{1,80}[ \t]*" + PEM_NEWLINE + r")+"
+    + r"[ \t]*-----END (?P=kind)-----"
+)
+GITHUB_TOKEN = re.compile(r"(?<![\w-])(?:gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{82})(?![\w-])")
+SLACK_TOKEN = re.compile(r"(?<![\w-])xox[bp]-\d{8,15}-\d{8,15}-(?:\d{8,15}-)?[A-Za-z0-9]{20,64}(?![\w-])")
+FORMATS = (
+    (PRIVATE_KEY, "SECRET-PRIVATE-KEY", "private-key", "Приватный ключ в исходниках"),
+    (GITHUB_TOKEN, "SECRET-GITHUB-TOKEN", "github-token", "Токен GitHub в исходниках"),
+    (SLACK_TOKEN, "SECRET-SLACK-TOKEN", "slack-token", "Токен Slack в исходниках"),
+)
+CONFIG_COMMENTS = re.compile(r"(?m)^[ \t]*[#!][^\n]*")
+CONFIG_SUFFIXES = (".yml", ".yaml", ".properties", ".env")
+KEY_SUFFIXES = (".pem", ".key")
+KOTLIN_SUFFIXES = (".kt", ".kts")
+
+
+def secret_source(path: str) -> bool:
+    return path.lower().endswith(CONFIG_SUFFIXES + KEY_SUFFIXES) or path.endswith(KOTLIN_SUFFIXES)
 
 
 def classify(key):
@@ -29,10 +50,22 @@ def literal_value(value):
                 and not text.startswith(("System.getenv(", "env(", "ENC(")))
 
 
+def scan_secret_formats(text, path, node_id, covered_lines):
+    for pattern, rule, kind, title in FORMATS:
+        for occurrence, match in enumerate(pattern.finditer(text), 1):
+            line = line_at(text, match.start())
+            if line in covered_lines:
+                continue
+            yield finding(rule, node_id, "critical", title, path, line,
+                          "Значение скрыто: ••••", str(occurrence), category="SECRET", classification=kind,
+                          endLine=line_at(text, match.end()),
+                          remediation="Замените скомпрометированный секрет и храните новый в менеджере секретов.")
+
+
 def scan_secrets(snapshot: Snapshot, node_id: str = "secret") -> list[Finding]:
     results = {}
     for path, content in sorted(snapshot.files.items()):
-        occurrences = {}
+        occurrences, covered_lines = {}, set()
 
         def add(key, line, kind, end=None):
             normalized = key.lower()
@@ -42,10 +75,11 @@ def scan_secrets(snapshot: Snapshot, node_id: str = "secret") -> list[Finding]:
                            category="SECRET", classification=kind, endLine=end,
                            remediation="Удалите значение из исходников и передавайте его через защищённую настройку.")
             results[item.id] = item
+            covered_lines.add(line)
 
-        if path.lower().endswith((".yml", ".yaml", ".properties", ".env")) or path.rsplit("/", 1)[-1] == ".env":
-            for line, text in enumerate(content.splitlines(), 1):
-                match = CONFIG.match(text)
+        if path.lower().endswith(CONFIG_SUFFIXES):
+            for line, config_line in enumerate(content.splitlines(), 1):
+                match = CONFIG.match(config_line)
                 if not match or not SENSITIVE.search(match["key"]):
                     continue
                 key, value = match["key"], match["value"]
@@ -54,7 +88,8 @@ def scan_secrets(snapshot: Snapshot, node_id: str = "secret") -> list[Finding]:
                     add(key, line, "secret-fallback")
                 elif literal_value(value):
                     add(key, line, classify(key))
-        elif path.endswith((".kt", ".kts")):
+            text = CONFIG_COMMENTS.sub(lambda match: " " * len(match[0]), content)
+        elif path.endswith(KOTLIN_SUFFIXES):
             text = kotlin_source(content)
             literals = {match["name"]: match for match in ASSIGNMENT.finditer(text) if literal_value(match["value"])}
             for key, match in literals.items():
@@ -72,4 +107,10 @@ def scan_secrets(snapshot: Snapshot, node_id: str = "secret") -> list[Finding]:
                     start = min(literals[left].start(), literals[right].start())
                     if start < combo.start():
                         add(name, line_at(text, start), "recoverable-token", line_at(text, sink.start()))
+        elif path.lower().endswith(KEY_SUFFIXES):
+            text = content
+        else:
+            continue
+        for item in scan_secret_formats(text, path, node_id, covered_lines):
+            results[item.id] = item
     return list(results.values())

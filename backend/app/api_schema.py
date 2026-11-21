@@ -19,6 +19,7 @@ INTEGER = {"type": "integer"}
 NUMBER = {"type": "number"}
 BOOL = {"type": "boolean"}
 MAP = {"type": "object"}
+CATALOG_SOURCE = choice("training", "osv", "custom")
 GRAPH = {"nodes": array(ref("Node")), "edges": array(ref("Edge"))}
 DRAFT = {"name": STRING, "schedule": {"anyOf": [ref("Schedule"), {"type": "null"}]},
          "snapshotId": {"type": ["string", "null"]}, **GRAPH}
@@ -26,9 +27,12 @@ BASE = "application/json"
 
 SCHEMAS = {
     "Error": obj(["code", "message"], code=STRING, message=STRING),
+    "AdvisoryCatalog": obj(["source", "analysisVersion", "osvAvailable", "customAvailable", "updating"],
+                           source=CATALOG_SOURCE, analysisVersion=STRING, osvAvailable=BOOL, customAvailable=BOOL,
+                           updating=BOOL, osvUpdatedAt={"type": ["string", "null"]}, error={"type": ["string", "null"]}),
     "Schedule": obj(["time", "timezone"], time=STRING, timezone=STRING),
     "Node": obj(["id", "type", "x", "y", "settings"], id=STRING, x=NUMBER, y=NUMBER,
-                type=choice("start", "secrets", "sca", "sast", "ai", "condition", "telegram", "finish"),
+                type=choice("start", "secrets", "sca", "sast", "gradle", "coverage", "ai", "condition", "telegram", "finish"),
                 settings=MAP),
     "Edge": obj(["from", "to", "branch"], **{"from": STRING, "to": STRING, "branch": choice("next", "yes", "no")}),
     "Snapshot": obj(["id", "label"], id=STRING, label=STRING),
@@ -41,10 +45,22 @@ SCHEMAS = {
                    id=STRING, ruleId=STRING, nodeId=STRING, severity=choice("low", "medium", "high", "critical"),
                    title=STRING, path=STRING, line=INTEGER, endLine={"type": ["integer", "null"]}, evidence=STRING,
                    advisoryId={"type": ["string", "null"]}, category={"type": ["string", "null"]},
-                   classification={"type": ["string", "null"]}),
+                   classification={"type": ["string", "null"]}, version={"type": ["string", "null"]},
+                   advisoryAliases={"anyOf": [array(STRING), {"type": "null"}]},
+                   advisorySource={"type": ["string", "null"]}, fixedVersion={"type": ["string", "null"]}),
+    "CoverageIssue": obj(["path", "line", "reason"], path=STRING, line=INTEGER,
+                         reason=choice("unknownAlias", "unknownVersion", "unsupportedVersion", "unsupportedAdvisoryRange")),
+    "SnapshotCoverage": obj(["filesInSnapshot", "filesByAnalyzer"], filesInSnapshot=INTEGER,
+                            filesByAnalyzer={"type": "object", "additionalProperties": INTEGER},
+                            sca=obj(["recognized", "comparable", "unresolved", "examples"],
+                                    recognized=INTEGER, comparable=INTEGER, unresolved=INTEGER,
+                                    examples=array(ref("CoverageIssue")))),
+    "Coverage": obj(["completed", "current"], completed=array(choice("secrets", "sca", "sast", "gradle")),
+                    current=ref("SnapshotCoverage"), base=ref("SnapshotCoverage")),
     "RunStep": obj(["nodeId", "status"], nodeId=STRING,
                    status=choice("queued", "running", "succeeded", "failed", "skipped"),
-                   input={"type": ["integer", "null"]}, output=STRING, branch=choice("yes", "no")),
+                   input={"type": ["integer", "null"]}, output=STRING, branch=choice("yes", "no"),
+                   coverage=ref("Coverage")),
     "CiResult": obj(["status", "reason"], status=choice("pending", "passed", "failed", "error"), reason=STRING,
                     **{key: {"type": ["string", "null"]} for key in ("findingId", "nodeId", "gateNodeId", "branch")}),
     "Comparison": obj(["introduced", "existing", "resolved"], introduced=array(STRING), existing=array(STRING),
@@ -90,12 +106,18 @@ def describe(*operations):
 
 
 PATHS = {
+    "/advisory-catalog": describe(operation("get", 200, ref("AdvisoryCatalog"))),
+    "/advisory-catalog/refresh": describe(operation("post", 202, ref("AdvisoryCatalog"), MAP)),
+    "/advisory-catalog/source": describe(operation("post", 200, ref("AdvisoryCatalog"),
+                                                 obj(["source"], source=CATALOG_SOURCE))),
     "/snapshots": describe(operation("get", 200, array(ref("Snapshot")))),
     "/snapshots/import": describe(operation("post", 201, ref("Snapshot"),
                                             obj(["file"], file={"type": "string", "format": "binary"}), request_content="multipart/form-data")),
     "/workflows": describe(operation("get", 200, array(ref("Workflow"))),
                            operation("post", 201, ref("Workflow"), ref("WorkflowDraft"))),
     "/workflows/{id}": describe(operation("get", 200, ref("Workflow"))),
+    "/workflows/{id}/github-actions": describe(operation("get", 200, STRING, content="application/yaml")),
+    "/ci/client": describe(operation("get", 200, STRING, content="text/plain")),
     "/workflows/{id}/save": describe(operation("post", 200, ref("Workflow"), ref("WorkflowUpdate"))),
     "/workflows/{id}/runs": describe(operation("get", 200, array(ref("Run"))),
                                      operation("post", 202, ref("RunAccepted"), ref("RunRequest"))),

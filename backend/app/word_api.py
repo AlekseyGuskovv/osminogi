@@ -14,9 +14,9 @@ def missing(message):
 
 
 class WordApi:
-    def __init__(self, store, load_run, save_workflow, launch, project, condition, analyzers):
+    def __init__(self, store, load_run, save_workflow, launch, project, condition, catalog):
         self.store, self.load_run = store, load_run
-        self.analyzers = analyzers
+        self.catalog = catalog
         self.save_workflow, self.launch, self.project, self.condition = save_workflow, launch, project, condition
 
     def workflow(self, key):
@@ -81,6 +81,7 @@ class WordApi:
         branch = "yes" if self.condition({**node, "threshold": threshold}, facts) else "no"
         nodes = {item["id"]: item for item in graph["nodes"]}
         snapshot = self.project(row["snapshotId"])
+        catalog = self.catalog.current()
         findings = {item.id: item for item in facts}
         source, first = node_id, branch
         while True:
@@ -94,7 +95,9 @@ class WordApi:
             kind = target["type"]
             branch = ""
             if kind in SCAN_TYPES:
-                findings.update({item.id: item for item in self.analyzers[SCAN_TYPES[kind]](snapshot, source)})
+                if kind == "deps" and row.get("analysisVersion") != catalog.version:
+                    raise ApiError(409, "CATALOG_CHANGED", "Для предпросмотра с текущим каталогом повторите проверку.")
+                findings.update({item.id: item for item in catalog.analyzers[SCAN_TYPES[kind]](snapshot, source)})
             elif kind == "gate":
                 branch = "yes" if self.condition(target, list(findings.values())) else "no"
 
@@ -133,6 +136,8 @@ class WordApi:
             row = self.workflow(key)
             if len(pieces) == 2:
                 handler.reply(200, to_workflow(row))
+            elif pieces[2:] == ["github-actions"]:
+                handler.send_ci_workflow(row["id"])
             elif pieces[2:] == ["runs"]:
                 handler.reply(200, [to_run(item) for item in self.runs(key)])
             elif len(pieces) == 5 and pieces[2] == "findings" and pieces[4] == "history":
