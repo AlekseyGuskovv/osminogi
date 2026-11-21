@@ -81,6 +81,9 @@ export function ComparisonPage({ run }: Props) {
 
   return <section className="garden-comparison" aria-label="Сравнение">
     <h2>Сравнение</h2>
+    <a href={`?${new URLSearchParams({ view: 'runs', workflow: run.workflowId, run: run.id, replay: '1' })}`}>
+      Сравнить в машине времени
+    </a>
     {reason.message && <aside className="garden-ci-reason" data-ci-reason={run.ci.reason} aria-label="Причина CI">
       <strong>Причина CI</strong>
       <p>{reason.message}{reason.findingId && ` · ${reason.findingId}`}</p>

@@ -39,12 +39,13 @@ export function useStartRun() {
 }
 
 
-type NodeView = { status: RunStatus | 'skipped'; input?: unknown; output?: unknown; error?: { code: string; message: string } }
+type NodeView = { branch?: 'yes' | 'no'; status: RunStatus | 'skipped'; input?: unknown; output?: unknown; error?: { code: string; message: string } }
 export type RunView = {
   id: string
   status: RunStatus
   ciStatus?: CiStatus
   nodes: Record<string, NodeView>
+  lastNodeEvent?: { id: string; seq: number; output?: unknown }
 }
 type RunSummary = {
   id: string
@@ -59,7 +60,7 @@ export function applyRunEvent(view: RunView, event: RunEvent): RunView {
   if (event.type === 'run.finished') return { ...view, status: event.data.status, ciStatus: event.data.ciStatus }
 
   const { nodeId, ...change } = event.data
-  return { ...view, nodes: { ...view.nodes, [nodeId]: { ...view.nodes[nodeId], ...change } } }
+  return { ...view, lastNodeEvent: { id: nodeId, seq: event.seq, output: change.output }, nodes: { ...view.nodes, [nodeId]: { ...view.nodes[nodeId], ...change } } }
 }
 
 export function useRunStatus(runId?: string) {

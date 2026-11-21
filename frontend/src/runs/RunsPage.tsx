@@ -3,6 +3,9 @@ import { Icon } from '../ui/Icon'
 import { WorkspaceNav } from '../ui/WorkspaceNav'
 import { StatusBadge } from '../ui/StatusBadge'
 import { getJson } from '../api'
+import { TimeMachine } from '../security-replay/TimeMachine'
+import { ExplainableCI } from '../security-replay/ExplainableCI'
+import { useRunStatus } from './useRun'
 import { ComparisonPage } from './ComparisonPage'
 import { FixDialog } from './FixDialog'
 import { FindingCard } from './FindingCard'
@@ -12,7 +15,7 @@ import type { Run } from './types'
 import { getHighlight } from './ci'
 import { runsUrl } from './navigation'
 
-export function RunsPage({ workflowId, runId }: { workflowId: string; runId?: string }) {
+export function RunsPage({ workflowId, runId, openTimeMachine }: { workflowId: string; runId?: string; openTimeMachine?: boolean }) {
   const [runs, setRuns] = useState<Run[]>()
   const [run, setRun] = useState<Run>()
   const [error, setError] = useState('')
@@ -39,6 +42,10 @@ export function RunsPage({ workflowId, runId }: { workflowId: string; runId?: st
     void load()
     return () => { active = false; clearTimeout(poll) }
   }, [workflowId, runId, attempt])
+
+  const [timeMachine, setTimeMachine] = useState(Boolean(openTimeMachine))
+  const [explanation, setExplanation] = useState(false)
+  const live = useRunStatus(run?.status === 'queued' || run?.status === 'running' ? run.id : undefined)
 
   const metrics = runs && [
     ['Всего запусков', runs.length, 'total'],
@@ -97,6 +104,22 @@ export function RunsPage({ workflowId, runId }: { workflowId: string; runId?: st
             recommendation={run.recommendations.find(recommendation => recommendation.findingId === finding.id)} />)}
         </div>
         {run.ci.gateNodeId && <ThresholdPreview key={run.id} runId={run.id} nodeId={run.ci.gateNodeId} />}
+        {live && <section className="replay-panel" aria-label="Выполнение в реальном времени">
+          <p className="replay-kicker">SECURITY PULSE · SSE</p>
+          <StatusBadge kind="run" status={live.status} />
+          <ul>{Object.entries(live.nodes).map(([id, node]) => <li key={id}><code>{id}</code> · {node.status}</li>)}</ul>
+        </section>}
+        <div className="replay-controls">
+          <button aria-expanded={timeMachine} onClick={() => setTimeMachine(value => !value)}>Машина времени безопасности</button>
+          {run.ci.status !== 'pending' && <button aria-expanded={explanation} onClick={() => setExplanation(value => !value)}>
+            {run.ci.status === 'failed' ? 'Почему CI не пройден?' : 'Объяснение CI'}
+          </button>}
+        </div>
+        {explanation && <ExplainableCI key={run.id} run={run} onClose={() => setExplanation(false)} />}
+        {explanation && <a href={`?${new URLSearchParams({ workflow: run.workflowId, ciRun: run.id, explain: '1' })}`}>
+          Открыть объяснение на графе
+        </a>}
+        {timeMachine && <TimeMachine key={run.id} workflowId={run.workflowId} initialId={run.id} />}
         <ComparisonPage key={run.id} run={run} />
       </>}
     </section>

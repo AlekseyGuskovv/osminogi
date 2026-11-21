@@ -1,0 +1,64 @@
+import { useEffect } from 'react'
+import type { Run } from '../runs/types'
+import { StatusBadge } from '../ui/StatusBadge'
+import type { RunView } from '../runs/useRun'
+import { FixDialog } from '../runs/FixDialog'
+import { ExplainableCI } from './ExplainableCI'
+import { TimeMachine } from './TimeMachine'
+
+const titles = [
+  'Проверяем безопасность проекта',
+  'Обнаружена критическая уязвимость',
+  'Исправляем уязвимость',
+  'Проверка пройдена',
+]
+
+export function PresentationMode({ stage, setStage, onClose, run, error, paused, onPause, onReplay, onFocus, onCompare, view }: {
+  stage: number; setStage: (stage: number) => void; onClose: () => void
+  run?: Run; view?: RunView; error: string; paused: boolean; onPause: () => void; onReplay: () => void
+  onFocus: (id: string) => void; onCompare: (run: Run) => void
+}) {
+  useEffect(() => {
+    function key(event: KeyboardEvent) {
+      const target = event.target
+      if (target instanceof Element && target.closest('input, select, textarea, dialog, [contenteditable]')) return
+      if (event.key === 'Escape') onClose()
+      if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+        event.preventDefault()
+        setStage(Math.max(0, Math.min(3, stage + (event.key === 'ArrowRight' ? 1 : -1))))
+      }
+    }
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [stage, setStage, onClose])
+  const finding = run?.findings.find(item => item.id === run.ci.findingId)
+
+  return <section className="replay-panel replay-presentation" aria-label="Режим демонстрации">
+    <header>
+      <div><p className="replay-kicker">SECURITY REPLAY · ЭТАП {stage + 1} ИЗ 4</p><h2>{titles[stage]}</h2></div>
+      <button onClick={onClose}>Выход</button>
+    </header>
+    {import.meta.env.VITE_USE_MOCKS === 'true' && <p className="replay-demo">Демо · тестовые данные</p>}
+    {error && <p role="alert">{error}</p>}
+    {!error && !run && <p role="status">Загружаем демонстрационный запуск…</p>}
+    <div className="replay-controls">
+      <button disabled={stage === 0} onClick={() => setStage(stage - 1)}>Назад</button>
+      <button disabled={stage === 3} onClick={() => setStage(stage + 1)}>Далее</button>
+      {stage === 0 && <>
+        <button disabled={!run} onClick={onReplay}>Повторить</button>
+        <button disabled={!run} onClick={onPause}>{paused ? 'Воспроизвести' : 'Пауза'}</button>
+      </>}
+    </div>
+    {run && stage === 0 && <div><p>Запись событий {run.id}. Темп воспроизведения отличается от времени выполнения.</p>
+      {view && <div className="replay-controls"><StatusBadge kind="run" status={view.status} />
+        {view.ciStatus && <StatusBadge kind="ci" status={view.ciStatus} />}</div>}</div>}
+    {run && stage === 1 && <ExplainableCI key={run.id} run={run} onFocus={onFocus} />}
+    {run && stage === 2 && (finding
+      ? <FixDialog run={run} findingId={finding.id} />
+      : <p>Для этого запуска нет связанной находки для предпросмотра.</p>)}
+    {run && stage === 3 && <>
+      <TimeMachine workflowId={run.workflowId} initialId={run.id} demo onFocus={onCompare} />
+      <p>Cyber Garden помогает обнаружить угрозу, объяснить её, проверить исправление и подтвердить результат повторным анализом.</p>
+    </>}
+  </section>
+}

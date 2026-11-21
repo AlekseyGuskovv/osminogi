@@ -787,6 +787,64 @@ try {
     return 'Full fix acceptance: red CI → masked finding → fix → pr-2 → green CI → resolved F-key; resumed SSE and redaction checked'
   }, '/?view=runs&workflow=wf-1&run=run-6')
 
+  await evaluate(4175, async () => {
+    async function until(predicate) {
+      for (let i = 0; i < 160; i++) {
+        const result = predicate()
+        if (result) return result
+        await new Promise(resolve => setTimeout(resolve, 30))
+      }
+      throw new Error('Security Replay did not reach the expected state')
+    }
+    const find = (root, text) => [...root.querySelectorAll('button')].find(button => button.textContent === text)
+    const canvas = await until(() => document.querySelector('.react-flow'))
+    await until(() => canvas.querySelectorAll('.react-flow__edge').length >= 7)
+    const graph = [...canvas.querySelectorAll('.react-flow__background, .react-flow__node, .react-flow__edge')]
+    const view = () => canvas.querySelector('.react-flow__viewport').style.transform
+    const camera = view()
+    const nativeFetch = window.fetch
+    const writes = []
+    window.fetch = (input, options) => {
+      if (options?.method === 'POST') writes.push(String(input))
+      return nativeFetch(input, options)
+    }
+    try {
+      find(document, 'Режим демонстрации').click()
+      const panel = await until(() => document.querySelector('.replay-presentation'))
+      if (!panel.textContent.includes('Демо · тестовые данные')) throw new Error('Demo label missing')
+      await until(() => !find(panel, 'Пауза')?.disabled)
+      find(panel, 'Пауза').click()
+      await until(() => find(panel, 'Воспроизвести'))
+      find(panel, 'Воспроизвести').click()
+      await until(() => canvas.querySelector('[data-execution="running"]'))
+      await until(() => canvas.querySelector('.replay-edge-pulse'))
+      find(panel, 'Повторить').click()
+      await until(() => canvas.querySelector('[data-execution="running"]'))
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+      await until(() => canvas.querySelector('.garden-ci-edge'))
+      if (canvas.querySelectorAll('[data-ci-highlight]').length !== 2) throw new Error('Expected analyzer and condition')
+      find(panel, 'Открыть находку').click()
+      await until(() => panel.querySelector('[data-finding-id="F-key"]'))
+      find(panel, 'Далее').click()
+      await until(() => panel.textContent.includes('Исправляем уязвимость'))
+      find(panel, 'Далее').click()
+      await until(() => panel.querySelector('.replay-resolved [data-finding-id="F-key"]'))
+      const compare = panel.querySelector('[aria-label="Машина времени безопасности"]')
+      find(compare, 'До').click()
+      await until(() => compare.querySelector('[data-replay-phase="before"] [data-finding-id="F-key"]'))
+      find(compare, 'После').click()
+      await until(() => compare.querySelector('[data-replay-phase="after"] .replay-resolved [data-finding-id="F-key"]'))
+      find(panel, 'Назад').click()
+      await until(() => panel.textContent.includes('Исправляем уязвимость'))
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      await until(() => !document.querySelector('.replay-presentation') && view() === camera)
+      if (writes.length || !graph.every(element => element.isConnected)) throw new Error('Slideshow modified data or remounted the graph')
+      return 'Security Replay: SSE pulse, explanation, four stages, time machine, unchanged graph and zero writes passed'
+    } finally {
+      window.fetch = nativeFetch
+    }
+  })
+
   await evaluate(4176, async () => {
     const { installMocks } = await import('/src/mocks/worker.ts')
     await installMocks()

@@ -20,6 +20,10 @@ import '@xyflow/react/dist/style.css'
 import { Icon } from '../ui/Icon'
 import { WorkspaceNav } from '../ui/WorkspaceNav'
 import { orderGraph } from './layout'
+import { ExplainableCI } from '../security-replay/ExplainableCI'
+import { PresentationMode } from '../security-replay/PresentationMode'
+import { usePresentation } from '../security-replay/usePresentation'
+import { pulseFor } from '../security-replay/state'
 import { newNodeSize, placeNode } from './placement'
 import type { Point } from './graph'
 
@@ -66,14 +70,14 @@ function fittedViewport(workflow: EditableWorkflow, width: number, height: numbe
 }
 
 const statuses = { queued: 'В очереди', running: 'Выполняется', succeeded: 'Готово', failed: 'Ошибка', skipped: 'Пропущен' }
-type Block = Node<{ kind: NodeType; detail?: string; status?: keyof typeof statuses; highlighted?: boolean }, 'workflow'>
-export type EditorProps = { workflowId?: string; ciRunId?: string; copiedTemplate?: boolean }
+type Block = Node<{ kind: NodeType; detail?: string; status?: keyof typeof statuses; highlighted?: boolean; ciPassed?: boolean; muted?: boolean }, 'workflow'>
+export type EditorProps = { workflowId?: string; ciRunId?: string; copiedTemplate?: boolean; explain?: boolean }
 
 const WorkflowBlock = memo(function WorkflowBlock({ data, selected }: NodeProps<Block>) {
   const { kind } = data
   const [label, description, tone] = labels[kind]
   return (
-    <div className={`garden-node ${selected ? 'selected' : ''}`} data-node-tone={tone} data-ci-highlight={data.highlighted || undefined}>
+    <div className={`garden-node ${selected ? 'selected' : ''}`} data-node-tone={tone} data-execution={data.status} data-ci-passed={data.ciPassed || undefined} data-explain-muted={data.muted || undefined} data-ci-highlight={data.highlighted || undefined}>
       {kind !== 'start' && <Handle type="target" position={Position.Left} aria-label="Вход" />}
       <span className="garden-icon"><Icon name={kind} size={17} /></span>
       <span className="garden-node-copy"><strong>{label}</strong><span>{data.detail ?? description}</span>
@@ -102,8 +106,11 @@ function WorkflowEdge(props: EdgeProps) {
       H ${targetX}
       C ${targetX - 23},${lane} ${targetX - 23},${targetY} ${targetX},${targetY}`
   }
-  return <BaseEdge id={props.id} path={path} style={props.style} markerEnd={props.markerEnd}
-    interactionWidth={props.interactionWidth} />
+  return <>
+    <BaseEdge id={props.id} path={path} style={props.style} markerEnd={props.markerEnd}
+      interactionWidth={props.interactionWidth} />
+    {typeof props.data?.pulse === 'number' && <path key={props.data.pulse} d={path} pathLength={100} className="replay-edge-pulse" />}
+  </>
 }
 
 const flowEdgeTypes = { workflow: WorkflowEdge }
@@ -156,7 +163,7 @@ const FlowCanvas = memo(function FlowCanvas({
   </ReactFlow>
 })
 
-export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorProps) {
+export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }: EditorProps) {
   const [workflow, setWorkflow] = useState<EditableWorkflow>()
   const canvas = useRef<HTMLElement>(null)
   const inspector = useRef<HTMLElement>(null)
@@ -169,6 +176,12 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorPr
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [selectedEdge, setSelectedEdge] = useState('')
   const [ciRun, setCiRun] = useState<Run>()
+  const [explanationOpen, setExplanationOpen] = useState(Boolean(explain))
+  const [demoOpen, setDemoOpen] = useState(false)
+  const [demoStage, setDemoStage] = useState(0)
+  const [demoCompareRun, setDemoCompareRun] = useState<Run>()
+  const savedCamera = useRef<Viewport | undefined>(undefined)
+  const demo = usePresentation(demoOpen, demoStage, workflow?.id)
   const [snapshots, setSnapshots] = useState<SnapshotRef[]>([])
   const [draftWarnings, setDraftWarnings] = useState<string[]>([])
   const [snapshotId, setSnapshotId] = useState('')
@@ -180,6 +193,9 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorPr
   const pending = saving || starting
   const runView = useRunStatus(accepted?.id)
   const runStatus = runView?.status ?? accepted?.status
+  const visualRun = demoOpen ? demo.view : runView
+  const explanationRun = demoOpen && demoStage === 1 ? demo.run : explanationOpen ? ciRun : undefined
+  const highlightRun = demoOpen ? demoStage === 3 ? demoCompareRun ?? demo.run : explanationRun : ciRun
   const [notice, setNotice] = useState<{ text: string; error?: boolean }>()
   const dirty = workflow && (!workflow.id || JSON.stringify({ ...workflow, snapshotId: snapshotId || undefined }) !== JSON.stringify(savedWorkflow))
   const hasStart = workflow?.nodes.some(node => node.type === 'start')
@@ -187,8 +203,8 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorPr
   const activeNodeView = runView?.nodes[selectedId]
   const missingChannel = workflow?.nodes.find(node => node.type === 'telegram' && !node.settings.channelId)
   const highlight = useMemo(
-    () => ciRun?.workflowId === workflowId && ciRun ? getHighlight(ciRun.ci) : undefined,
-    [ciRun, workflowId],
+    () => highlightRun?.workflowId === workflow?.id && highlightRun ? getHighlight(highlightRun.ci) : undefined,
+    [highlightRun, workflow?.id],
   )
 
   useEffect(() => { draftRef.current = workflow }, [workflow])
@@ -203,6 +219,37 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorPr
     flow.current = instance
     if (draftRef.current && !cameraTouched.current) fit(draftRef.current)
   }, [fit])
+
+  useEffect(() => {
+    if (!demoOpen) return
+    const frame = requestAnimationFrame(() => {
+      if (draftRef.current) fit(draftRef.current)
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [demoOpen, fit])
+
+  function openDemo() {
+    savedCamera.current = flow.current?.getViewport()
+    cameraTouched.current = true
+    demo.restart()
+    setDemoStage(0)
+    setDemoCompareRun(undefined)
+    setDemoOpen(true)
+  }
+
+  function closeDemo() {
+    setDemoOpen(false)
+    if (savedCamera.current) void flow.current?.setViewport(savedCamera.current)
+  }
+
+  function focusEvidence(id: string) {
+    const node = flow.current?.getNode(id)
+    if (!node) return
+    const zoom = flow.current?.getZoom()
+    const duration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 420
+    void flow.current?.setCenter(node.position.x + (node.measured?.width ?? 172) / 2,
+      node.position.y + (node.measured?.height ?? 62) / 2, { zoom, duration })
+  }
 
   const markCameraTouched = useCallback((event: MouseEvent | TouchEvent | null) => {
     if (event) cameraTouched.current = true
@@ -387,24 +434,28 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorPr
 
   const nodes = useMemo<Block[]>(() => (workflow?.nodes ?? []).map(node => ({
     id: node.id, type: 'workflow', zIndex: 2, position: { x: node.x, y: node.y },
-    data: { kind: node.type, detail: node.type === 'condition' ? conditionLabel(node.settings) : undefined, status: runView?.nodes[node.id]?.status, highlighted: highlight?.nodeIds.includes(node.id) }, selected: node.id === selectedId,
-  })), [workflow?.nodes, runView, highlight, selectedId])
+    data: { kind: node.type, detail: node.type === 'condition' ? conditionLabel(node.settings) : undefined, status: visualRun?.nodes[node.id]?.status, highlighted: highlight?.nodeIds.includes(node.id),
+      ciPassed: highlightRun?.ci.status === 'passed',
+      muted: Boolean(explanationRun && highlight?.nodeIds.length && !highlight.nodeIds.includes(node.id)) }, selected: node.id === selectedId,
+  })), [workflow?.nodes, visualRun, highlight, selectedId, explanationRun, highlightRun])
   const edges = useMemo(() => (workflow?.edges ?? []).map(edge => {
     const highlighted = highlight?.edge?.from === edge.from && highlight.edge.branch === edge.branch
     const id = `${edge.from}:${edge.branch}`
     const related = selectedEdge === id || (selectedId !== '' && (edge.from === selectedId || edge.to === selectedId))
-    const color = highlighted ? '#f1747b' : related ? '#72e3ac' : edge.branch === 'yes' ? '#80a993' : edge.branch === 'no' ? '#be9e6b' : '#71868f'
+    const { choice, pulse } = pulseFor(edge, visualRun)
+    const color = choice === 'taken' ? '#72e3ac' : highlighted ? highlightRun?.ci.status === 'passed' ? '#72e3ac' : '#f1747b' : related ? '#72e3ac' : edge.branch === 'yes' ? '#80a993' : edge.branch === 'no' ? '#be9e6b' : '#71868f'
     return {
       id, source: edge.from, target: edge.to, sourceHandle: edge.branch, type: 'workflow', interactionWidth: 8, zIndex: 0,
       selected: id === selectedEdge,
+      data: { pulse },
       markerEnd: { type: MarkerType.ArrowClosed, color },
-      style: { stroke: color, strokeWidth: highlighted || related ? 2.6 : 1.6 },
+      style: { stroke: color, strokeWidth: highlighted || related || choice === 'taken' ? 2.6 : 1.6, opacity: choice === 'alternate' ? .32 : undefined },
       className: highlighted ? 'garden-ci-edge' : related ? 'garden-related-edge' : undefined,
     }
-  }), [workflow?.edges, highlight, selectedId, selectedEdge])
+  }), [workflow?.edges, highlight, selectedId, selectedEdge, visualRun, highlightRun])
 
   return (
-    <div className="garden-shell">
+    <div className="garden-shell" data-replay-open={demoOpen}>
       <WorkspaceNav workflowId={workflow?.id ?? workflowId} section="editor" />
       <main className="garden">
       <section className="garden-heading garden-editor-heading">
@@ -416,6 +467,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorPr
           </div>}
         </div>
         {workflow && <div className="garden-actions">
+          <button type="button" disabled={pending} onClick={openDemo}>Режим демонстрации</button>
           <button disabled={pending} onClick={() => void submit('save')}>Сохранить</button>
           <button className="garden-primary" disabled={pending || !workflow.id || !snapshotId} onClick={() => void submit('run')}>▷ Запустить</button>
         </div>}
@@ -456,6 +508,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorPr
       {ciRun && highlight && <p className="garden-notice">
         <a href={runsUrl(ciRun.workflowId, ciRun.id)}>{ciRun.id}</a> · CI {ciRun.ci.status}
         {highlight.findingId && ` · ${highlight.findingId}`}
+        {!explanationOpen && <button onClick={() => setExplanationOpen(true)}>{ciRun.ci.status === 'failed' ? 'Почему CI не пройден?' : 'Объяснение CI'}</button>}
       </p>}
       {notice && <p className={`garden-notice ${notice.error ? 'error' : ''}`} role={notice.error ? 'alert' : 'status'}>{notice.text}</p>}
       {accepted && workflow?.id && <section className="garden-run-accepted" aria-label="Текущий запуск">
@@ -466,7 +519,14 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorPr
       </section>}
       {loading && <p className="garden-notice" role="status">Загрузка сценария…</p>}
       {!loading && !workflow && <button className="garden-retry" onClick={() => { setLoading(true); setNotice(undefined); setLoadAttempt(attempt => attempt + 1) }}>Повторить</button>}
-      {workflow && <div className="garden-workspace" data-inspector-collapsed={inspectorCollapsed}>
+      {demoOpen && <PresentationMode stage={demoStage} setStage={stage => {
+        setDemoStage(stage)
+        setDemoCompareRun(undefined)
+        if (stage === 0) demo.restart()
+      }} onClose={closeDemo} run={demo.run} view={demo.view} error={demo.error} paused={demo.paused}
+        onPause={() => demo.setPaused(value => !value)} onReplay={demo.restart} onFocus={focusEvidence}
+        onCompare={setDemoCompareRun} />}
+      {workflow && <div className="garden-workspace" data-inspector-collapsed={inspectorCollapsed} data-explain-open={!demoOpen && Boolean(explanationRun)}>
         <aside className="garden-panel garden-palette" aria-label="Палитра">
           <h2>Палитра блоков</h2>
           {palette.map(group => <section key={group.title}><h3>{group.title}</h3>
@@ -488,12 +548,15 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorPr
           <div className="garden-canvas-header"><div><Icon name="graph" size={16} /><strong>Граф сценария</strong></div>
             <button className="garden-inspector-toggle" onClick={() => { setInspectorCollapsed(false); setInspectorOpen(open => !open) }} aria-expanded={inspectorOpen} aria-controls="workflow-inspector"><Icon name="panel" size={16} />Настройки</button>
           </div>
-          <FlowCanvas nodes={nodes} edges={edges} pending={pending} onInit={initializeFlow} onMoveStart={markCameraTouched}
+          <FlowCanvas nodes={nodes} edges={edges} pending={pending || demoOpen} onInit={initializeFlow} onMoveStart={markCameraTouched}
             onPositionCommit={commitPositions} onConnect={linkBlocks} onPickNode={pickNode}
             onPickEdge={pickEdge} onClearSelection={clearSelection} />
           <button className="garden-layout" type="button" disabled={pending} onClick={order}><Icon name="layout" size={15} />Упорядочить</button>
         </section>
-        <aside ref={inspector} className="garden-panel garden-settings" id="workflow-inspector" data-open={inspectorOpen} aria-label="Настройки блока">
+        {!demoOpen && explanationRun
+          ? <aside className="replay-inspector"><ExplainableCI key={explanationRun.id} run={explanationRun}
+            onClose={() => setExplanationOpen(false)} onFocus={focusEvidence} /></aside>
+          : <aside ref={inspector} className="garden-panel garden-settings" id="workflow-inspector" data-open={inspectorOpen} aria-label="Настройки блока">
           <div className="garden-inspector-title"><h2>Настройки</h2><button className="garden-inspector-close" onClick={() => { setInspectorOpen(false); setInspectorCollapsed(true) }} aria-label="Закрыть настройки">×</button></div>
           {activeNode ? <>
             <div className="garden-inspector-node" data-node-tone={labels[activeNode.type][2]}>
@@ -529,7 +592,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorPr
             <h3>Выберите блок</h3><p>Нажмите на блок на холсте, чтобы открыть его настройки и посмотреть связи.</p>
             <dl><dt>Блоки</dt><dd>{workflow.nodes.length}</dd><dt>Связи</dt><dd>{workflow.edges.length}</dd></dl>
           </div>}
-        </aside>
+        </aside>}
       </div>}
       </main>
     </div>

@@ -6,6 +6,6 @@ export default function App() {
   const search = new URLSearchParams(window.location.search)
   const id = search.get('workflow') ?? 'wf-1'
   if (search.get('view') === 'templates') return <TemplatesPage workflowId={id} />
-  if (search.get('view') === 'runs') return <RunsPage workflowId={id} runId={search.get('run') ?? undefined} />
-  return <WorkflowEditor workflowId={id === 'new' ? undefined : id} ciRunId={search.get('ciRun') ?? undefined} copiedTemplate={search.get('setup') === '1'} />
+  if (search.get('view') === 'runs') return <RunsPage workflowId={id} runId={search.get('run') ?? undefined} openTimeMachine={search.get('replay') === '1'} />
+  return <WorkflowEditor workflowId={id === 'new' ? undefined : id} ciRunId={search.get('ciRun') ?? undefined} copiedTemplate={search.get('setup') === '1'} explain={search.get('explain') === '1'} />
 }
