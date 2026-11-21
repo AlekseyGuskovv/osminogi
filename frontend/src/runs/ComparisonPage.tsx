@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ApiError, getJson } from '../api'
+import { getHighlight } from './ci'
 import { FindingCard } from './FindingCard'
 import type { Comparison, Run } from './types'
 
@@ -10,6 +11,19 @@ const groups = [
   ['existing', 'Уже было'],
   ['resolved', 'Устранено'],
 ] as const
+
+const reasons = {
+  CRITICAL_FOUND: 'В текущем снимке есть критическая находка. CI завершён с ошибкой независимо от того, когда она появилась.',
+  NO_CRITICAL: 'В текущем снимке нет критических находок.',
+  SCAN_FAILED: 'Анализ завершён не полностью. CI не может подтвердить результат.',
+}
+
+function showCiReason(run: Run) {
+  return {
+    ...getHighlight(run.ci),
+    message: run.ci.reason ? reasons[run.ci.reason] : undefined,
+  }
+}
 
 export function ComparisonPage({ run }: Props) {
   const [previousRuns, setPreviousRuns] = useState<Run[]>()
@@ -63,8 +77,15 @@ export function ComparisonPage({ run }: Props) {
     ...run.findings.map(finding => [finding.id, finding] as const),
   ])
 
+  const reason = showCiReason(run)
+
   return <section className="garden-comparison" aria-label="Сравнение">
     <h2>Сравнение</h2>
+    {reason.message && <aside className="garden-ci-reason" data-ci-reason={run.ci.reason} aria-label="Причина CI">
+      <strong>Причина CI</strong>
+      <p>{reason.message}{reason.findingId && ` · ${reason.findingId}`}</p>
+      {reason.nodeIds.length > 0 && <a href={`?${new URLSearchParams({ workflow: run.workflowId, ciRun: run.id })}`}>Показать на графе</a>}
+    </aside>}
     <label>Сравнить с <select value={againstRunId} onChange={event => setAgainstRunId(event.target.value)}>
       <option value="">{run.baseSnapshotId ? `База PR · ${run.baseSnapshotId}` : 'Базовый результат'}</option>
       {previousRuns?.map(item => <option key={item.id} value={item.id}>Запуск {item.id} · {item.snapshotId}</option>)}

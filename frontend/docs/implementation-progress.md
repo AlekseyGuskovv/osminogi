@@ -25,6 +25,7 @@
 | 21 | Snapshot Import API | `feat/21-snapshot-import-api` | `0599d14` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Multipart, 201/413/422, снимки доступны в GET. |
 | 22 | Snapshot Picker | `feat/22-snapshot-picker` | `7c44352` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Импорт ZIP, новый выбор и сохранение прежнего значения при ошибке. |
 | 23 | Telegram Connections | `feat/23-telegram-connections` | `f8727b2` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Метаданные подключений, поле пароля и channelId в графе. |
-| 24 | Template Copy | `feat/24-template-copy` | HEAD ветки | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Готово к публикации | Явный выбор своего снимка и канала для копии. |
+| 24 | Template Copy | `feat/24-template-copy` | `7277f8a` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Явный выбор своего снимка и канала для копии. |
+| 25 | CI Reason | `feat/25-ci-reason` | HEAD ветки | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Готово к публикации | Красный CI объяснён и для находки из категории «Уже было». |
 
-Следующая задача — Task 25, причина CI.
+Следующая задача — Task 26, предупреждения AI-черновика.

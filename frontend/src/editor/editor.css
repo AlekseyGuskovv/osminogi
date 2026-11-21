@@ -113,3 +113,6 @@
 .garden-connection-picker form { display: grid; gap: 6px; margin-top: 6px; }
 .garden-copy-setup { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .garden-copy-setup span { color: #d8e8dc; }
+.garden-ci-reason { margin-bottom: 13px; border-radius: 9px; padding: 12px; background: #1b2b22; }
+.garden-ci-reason[data-ci-reason='CRITICAL_FOUND'] { background: #3d2825; color: #ffd5cc; }
+.garden-ci-reason p { margin: 6px 0; }

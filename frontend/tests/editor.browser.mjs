@@ -204,12 +204,22 @@ try {
     const clickHandle = async selector => {
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
       const handle = document.querySelector(selector)
-      const rect = handle.getBoundingClientRect()
-      const x = rect.left + rect.width / 2
-      const y = rect.top + rect.height / 2
-      assert(document.elementFromPoint(x, y) === handle, 'Handle must be visible: ' + selector)
+      function point() {
+        const rect = handle.getBoundingClientRect()
+        const x = rect.left + rect.width / 2
+        const y = rect.top + rect.height / 2
+        return document.elementFromPoint(x, y) === handle ? { x, y } : undefined
+      }
+      if (!point()) document.querySelector('.react-flow__controls-fitview')?.click()
+      let position
+      try { await waitFor(() => { position = point(); return position }) }
+      catch {
+        const rect = handle.getBoundingClientRect()
+        const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
+        throw new Error(selector + ' handle at ' + JSON.stringify(rect.toJSON()) + ' has ' + handle.className + ', hit ' + hit?.className)
+      }
       globalThis.clickComplete = false
-      globalThis.dispatchClick(JSON.stringify({ x, y }))
+      globalThis.dispatchClick(JSON.stringify(position))
       await waitFor(() => globalThis.clickComplete)
     }
     await clickHandle('[data-id="start"] .source')
@@ -674,6 +684,29 @@ try {
     }
     return 'Template setup: explicit snapshot and Telegram selection, separate save and successful delivery'
   }, '/?workflow=wf-3&setup=1')
+
+  await evaluate(4175, async () => {
+    for (let i = 0; i < 80 && !document.querySelector('[data-comparison-group="existing"] [data-finding-id="F-key"]'); i++) {
+      await new Promise(resolve => setTimeout(resolve, 50))
+    }
+    const reason = document.querySelector('[data-ci-reason="CRITICAL_FOUND"]')
+    if (!document.querySelector('[data-detail-ci="failed"]') ||
+      !document.querySelector('[data-comparison-group="existing"] [data-finding-id="F-key"]') ||
+      document.querySelector('[data-comparison-group="introduced"] [data-finding-id="F-key"]') ||
+      !reason?.textContent.includes('F-key') || !reason.querySelector('a')?.href.includes('ciRun=run-existing')) {
+      throw new Error('Existing critical finding must explain red CI independently of introduced group')
+    }
+    const { getJson, ApiError } = await import('/src/api.ts')
+    const foreign = (await getJson('/workflows/wf-3/runs'))[0].id
+    try { await getJson('/runs/run-existing/comparison?againstRunId=' + foreign) }
+    catch (error) {
+      if (error instanceof ApiError && error.code === 'INCOMPARABLE_RUNS' && error.status === 409) {
+        return 'CI reason: existing critical finding explains red CI; incompatible comparison returns 409'
+      }
+      throw error
+    }
+    throw new Error('Expected incompatible runs error')
+  }, '/?view=runs&workflow=wf-1&run=run-existing')
 
   await evaluate(4176, async () => {
     const { installMocks } = await import('/src/mocks/worker.ts')
