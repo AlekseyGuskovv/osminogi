@@ -155,7 +155,7 @@ try {
     await waitFor(() => globalThis.dragComplete)
     assert(canvas.contains(condition), 'Dragged condition still on canvas')
 
-    const select = document.querySelector('.garden-actions select')
+    const select = document.querySelector('.garden-snapshot-select')
     assert(select.options.length === 5, 'Snapshot options loaded from API')
     select.value = 'pr-1'
     select.dispatchEvent(new Event('change', { bubbles: true }))
@@ -198,7 +198,7 @@ try {
     await waitFor(() => settings.querySelector('pre')?.textContent.includes('F-key'))
     assert(document.querySelector('[data-id="gate"] [data-node-status="succeeded"]'), 'Other nodes retain their status')
     const { postJson } = await import('/src/api.ts')
-    const addAndSelect = () => palette.querySelectorAll('button')[1].click()
+    const addAndSelect = () => palette.querySelector('[data-block-type=secrets]').click()
     addAndSelect()
     await waitFor(() => document.querySelector('[data-id="secrets-1"] .source'))
     const clickHandle = async selector => {
@@ -237,12 +237,12 @@ try {
     assert(committed.edges.some(edge => edge.from === 'secrets-1' && edge.to === 'secret'), 'Added node output saved')
     await postJson('/workflows/wf-1/save', { ...committed, name: 'Изменено параллельно' })
 
-    palette.querySelectorAll('button')[1].click()
+    palette.querySelector('[data-block-type=secrets]').click()
     await waitFor(() => document.querySelectorAll('.react-flow__node').length === 10)
     buttons.find(button => button.textContent === 'Сохранить').click()
     await waitFor(() => document.querySelector('[role="alert"]')?.textContent.includes('актуальную ревизию'))
     assert(document.querySelectorAll('.react-flow__node').length === 10, 'Rejected save retains changes')
-    palette.querySelectorAll('button')[1].click()
+    palette.querySelector('[data-block-type=secrets]').click()
     await waitFor(() => document.querySelectorAll('.react-flow__node').length === 11)
     assert(document.querySelector('[data-id="secrets-2"]') && document.querySelector('[data-id="secrets-3"]'), 'Duplicate block types receive distinct IDs')
     return 'Editor: graph, palette, selection, drag, settings, API save/run and error recovery passed'
@@ -268,8 +268,8 @@ try {
     if (edgePath('no') !== noPath) throw new Error('Changing yes must preserve no')
     gate.querySelector('.garden-node').click()
     const settings = document.querySelector('[aria-label="Настройки блока"]')
-    await check(() => settings.querySelector('button'), 'Delete action')
-    settings.querySelector('button').click()
+    await check(() => settings.querySelector('.garden-remove'), 'Delete action')
+    settings.querySelector('.garden-remove').click()
     await check(() => !document.querySelector('.react-flow__node[data-id="gate"]'), 'Deleted block')
     await check(() => !edgePath('yes') && !edgePath('no') && document.querySelectorAll('.react-flow__edge').length === 5,
       'Incident edges removed; unrelated edges preserved')

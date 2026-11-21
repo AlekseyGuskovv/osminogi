@@ -42,7 +42,7 @@ export function DraftDialog({ onOpenDraft, disabled }: { onOpenDraft: (result: W
           <textarea required rows={4} maxLength={1000} disabled={pending} value={prompt}
             onChange={event => { setPrompt(event.target.value); setDraft(undefined) }} />
         </label>
-        <button disabled={pending || !prompt.trim()}>{pending ? 'Подготовка…' : 'Сгенерировать черновик'}</button>
+        <button className={draft ? undefined : "garden-primary"} disabled={pending || !prompt.trim()}>{pending ? 'Подготовка…' : 'Сгенерировать черновик'}</button>
       </form>
       {error && <p role="alert">{error}</p>}
       {draft && <div>
@@ -50,11 +50,11 @@ export function DraftDialog({ onOpenDraft, disabled }: { onOpenDraft: (result: W
         {draft.warnings?.length > 0 && <ul className="garden-draft-warnings" aria-label="Предупреждения">
           {draft.warnings.map(warning => <li key={warning}>{warning}</li>)}
         </ul>}
-        <button onClick={() => showDraft(draft)}>
+        <button className="garden-primary" onClick={() => showDraft(draft)}>
           Открыть в редакторе
         </button>
       </div>}
-      <form method="dialog"><button>Закрыть</button></form>
+      <form className="garden-dialog-close" method="dialog"><button>Закрыть</button></form>
     </dialog>
   </>
 }

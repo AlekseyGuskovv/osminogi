@@ -69,12 +69,12 @@ export function FixDialog({ run, findingId }: { run: Run; findingId: string }) {
           <div><h3>До</h3><pre>{preview.before}</pre></div>
           <div><h3>После</h3><pre>{preview.after}</pre></div>
         </div>
-        {!snapshotId && <button disabled={busy} onClick={() => void apply()}>Применить исправление</button>}
+        {!snapshotId && <button className="garden-primary" disabled={busy} onClick={() => void apply()}>Применить исправление</button>}
       </>}
       {snapshotId && <p role="status" data-fixed-snapshot={snapshotId}>Создан снимок {snapshotId}.</p>}
       {snapshotId && !accepted && <button disabled={starting} onClick={() => void rerun()}>Проверить новый снимок</button>}
       {accepted && <p role="status"><a href={runsUrl(run.workflowId, accepted.id)}>Открыть запуск {accepted.id}</a> · В очереди</p>}
-      <form method="dialog"><button disabled={busy || starting}>Закрыть</button></form>
+      <form className="garden-dialog-close" method="dialog"><button disabled={busy || starting}>Закрыть</button></form>
     </dialog>
   </>
 }

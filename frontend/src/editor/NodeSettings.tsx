@@ -10,7 +10,7 @@ type Props = {
 }
 
 const metrics = {
-  maxSeverity: { label: 'Максимальная критичность', operator: 'gte', value: 'critical' },
+  maxSeverity: { label: 'Уровень риска', operator: 'gte', value: 'critical' },
   findingCount: { label: 'Число находок', operator: 'gte', value: 1 },
   findingTitle: { label: 'Название находки', operator: 'regex', value: '' },
 } as const

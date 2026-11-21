@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { getJson, postJson } from '../api'
-import { runsUrl } from '../runs/navigation'
+import { Icon } from '../ui/Icon'
+import { WorkspaceNav } from '../ui/WorkspaceNav'
 import type { Workflow } from '../workflow'
 import type { Template } from './types'
 
@@ -61,26 +62,27 @@ export function TemplatesPage({ workflowId }: { workflowId: string }) {
     })
   }
 
-  return <main className="garden">
-    <header className="garden-top"><span className="garden-brand"><b aria-hidden="true">✳</b> Cyber Garden</span>
-      <a href={`?workflow=${encodeURIComponent(workflowId)}`}>Редактор</a>
-      <a href={runsUrl(workflowId)}>Запуски</a>
-    </header>
+  return <div className="garden-shell">
+    <WorkspaceNav workflowId={workflowId} section="templates" />
+    <main className="garden">
     <section className="garden-results">
-      <h1>Шаблоны</h1>
+      <p className="garden-kicker">Рабочее пространство <span>/</span> Каталог</p>
+      <div className="garden-page-heading"><h1>Шаблоны сценариев</h1></div>
       {!templates && !error && <p role="status">Загрузка шаблонов…</p>}
       {error && <><p role="alert">{error}</p>
         {!templates && <button onClick={() => { setError(''); setAttempt(value => value + 1) }}>Повторить</button>}
       </>}
-      {templates && <>
+      {templates && <div className="garden-template-layout">
+        <section aria-label="Каталог шаблонов">
         {templates.length === 0 && <p>В каталоге пока нет шаблонов.</p>}
-        <div className="garden-findings">
+        <div className="garden-findings garden-template-grid">
           {templates.map(template => <article className="garden-finding" key={template.id} data-template-id={template.id}>
-            <h2>{template.name}</h2><p>{template.description}</p>
+            <span className="garden-template-icon"><Icon name="templates" /></span><h2>{template.name}</h2><p>{template.description}</p>
             <p className="garden-meta">{template.workflow.nodes.length} блоков · ревизия {template.workflow.revision}</p>
             <button disabled={pending} onClick={() => openCopiedTemplate(template.id)}>Создать копию</button>
           </article>)}
         </div>
+        </section>
         <form className="garden-template-form" onSubmit={event => { event.preventDefault(); publish() }}>
           <h2>Опубликовать сценарий</h2>
           <label>Сценарий<select value={selectedWorkflow} onChange={event => setSelectedWorkflow(event.target.value)}>
@@ -90,7 +92,8 @@ export function TemplatesPage({ workflowId }: { workflowId: string }) {
           <label>Описание<textarea maxLength={500} rows={3} value={description} onChange={event => setDescription(event.target.value)} /></label>
           <button disabled={!selectedWorkflow || !name.trim() || pending}>Опубликовать</button>
         </form>
-      </>}
+      </div>}
     </section>
-  </main>
+    </main>
+  </div>
 }

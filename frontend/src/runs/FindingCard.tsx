@@ -11,10 +11,10 @@ export function FindingCard({ finding, recommendation, workflowId }: FindingCard
       <h3>{finding.title}</h3>
       <span className="garden-severity" data-severity={finding.severity}>{severityLabels[finding.severity]}</span>
     </header>
-    <p className="garden-meta">
+    <p className="garden-meta garden-finding-location">
       <code>{finding.path}:{finding.line}</code> · {finding.ruleId}{finding.advisoryId && ` · ${finding.advisoryId}`}
     </p>
-    <pre aria-label="Доказательство">{finding.evidence}</pre>
+    <pre className="garden-evidence" aria-label="Доказательство">{finding.evidence}</pre>
     {recommendation && <section aria-label="Рекомендация">
       <p>{recommendation.explanation}</p>
       <p>{recommendation.action}</p>

@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { Icon } from '../ui/Icon'
 import { importSnapshot } from '../api'
 import type { SnapshotRef } from '../api'
 
@@ -48,8 +49,8 @@ export function SnapshotPicker({ snapshots, value, disabled, onSelect, onImport 
         event.currentTarget.value = ''
         if (file) void upload(file)
       }} />
-    <button type="button" disabled={disabled || uploading} onClick={() => fileInput.current?.click()}>
-      {uploading ? 'Загрузка…' : 'Загрузить ZIP'}
+    <button className="garden-upload" type="button" disabled={disabled || uploading} onClick={() => fileInput.current?.click()}>
+      <Icon name="upload" size={14} />{uploading ? 'Загрузка…' : 'Загрузить ZIP'}
     </button>
     {error && <small role="alert">{error}</small>}
     {success && <small role="status">{success}</small>}
