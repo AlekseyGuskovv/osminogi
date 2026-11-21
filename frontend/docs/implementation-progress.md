@@ -19,6 +19,7 @@
 | 15 | CI Highlight | `feat/15-ci-highlight` | `2f4da95` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Подсветка анализатора, условия и выбранной ветки. |
 | 16 | Threshold Preview | `feat/16-threshold-preview` | `f79fc85` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Предпросмотр без изменения графа или истории. |
 | 17 | Fix Dialog | `feat/17-fix-dialog` | `8e355e5` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Маскированный diff, подтверждение, новый снимок и повторный запуск. |
-| 18 | Finding History | `feat/18-finding-history` | HEAD ветки | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Готово к публикации | Состояния found, resolved, returned со ссылками. |
+| 18 | Finding History | `feat/18-finding-history` | `85aecc7` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Состояния found, resolved, returned со ссылками. |
+| 19 | Templates | `feat/19-templates-page` | HEAD ветки | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Готово к публикации | Каталог, публикация и копия без частных настроек. |
 
-Следующая задача — Task 19, шаблоны.
+Следующая задача — Task 20, AI-черновик.

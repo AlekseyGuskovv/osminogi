@@ -41,6 +41,7 @@ export function RunsPage({ workflowId, runId }: { workflowId: string; runId?: st
     <header className="garden-top"><span className="garden-brand"><b aria-hidden="true">✳</b> Cyber Garden</span>
       <a href={`?workflow=${encodeURIComponent(workflowId)}`}>Редактор</a>
       <a href={runsUrl(workflowId)}>Запуски</a>
+        <a href={`?view=templates&workflow=${encodeURIComponent(workflowId)}`}>Шаблоны</a>
     </header>
     <section className="garden-results">
       <p className="garden-kicker">{workflowId}</p>

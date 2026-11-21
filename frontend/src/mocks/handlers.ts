@@ -1,4 +1,5 @@
 import { http, HttpResponse } from 'msw'
+import type { Template } from '../templates/types'
 import { nodeTypes } from '../workflow'
 import type { Branch, Workflow, WorkflowDraft } from '../workflow'
 import { runEvents } from './events'
@@ -33,6 +34,15 @@ function storeWorkflow(workflow: Workflow) {
 }
 const runStorageKey = 'cyber-garden.mock.runs.v2'
 const runs = new Map<string, StoredRun>()
+const templateStorageKey = 'cyber-garden.mock.templates.v2'
+const templates = new Map<string, Template>()
+try {
+  const cached = globalThis.localStorage?.getItem(templateStorageKey)
+  if (cached) for (const template of JSON.parse(cached) as Template[]) templates.set(template.id, template)
+} catch {
+  // Keep the catalog available without persistence.
+}
+let nextTemplate = 1
 let nextWorkflow = 2
 let nextRun = 4
 let nextPreview = 1
@@ -52,6 +62,20 @@ function notFound(message: string) {
 
 function invalidGraph() {
   return error(422, 'INVALID_GRAPH', 'Проверьте узлы и связи графа, включая обе ветки условия.')
+}
+
+function forTemplate(workflow: Workflow): Workflow {
+  const { snapshotId: _snapshotId, ...graph } = workflow
+  return {
+    ...graph,
+    schedule: null,
+    nodes: graph.nodes.map(node => {
+      if (node.type !== 'telegram') return node
+      const settings = { ...node.settings }
+      delete settings.channelId
+      return { ...node, settings }
+    }),
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -200,6 +224,32 @@ function scenarioFor(request: Request): RunScenario | undefined {
 
 export const handlers = [
   http.get(api('/snapshots'), () => HttpResponse.json(snapshots)),
+  http.get(api('/templates'), () => HttpResponse.json([...templates.values()])),
+  http.post(api('/templates'), async ({ request }) => {
+    const body = await readBody(request)
+    const workflow = typeof body?.workflowId === 'string' ? workflows.get(body.workflowId) : undefined
+    if (!workflow) return notFound('Сценарий не найден.')
+    if (typeof body?.name !== 'string' || !body.name.trim() || typeof body.description !== 'string') {
+      return error(422, 'INVALID_REQUEST', 'Укажите название и описание шаблона.')
+    }
+    while (templates.has(`tpl-${nextTemplate}`)) nextTemplate++
+    const template: Template = { id: `tpl-${nextTemplate++}`, name: body.name, description: body.description, workflow: forTemplate(workflow) }
+    templates.set(template.id, template)
+    try {
+      globalThis.localStorage?.setItem(templateStorageKey, JSON.stringify([...templates.values()]))
+    } catch {
+      // Keep the publication available in this page.
+    }
+    return HttpResponse.json(template, { status: 201 })
+  }),
+  http.post(api('/templates/:templateId/copy'), ({ params }) => {
+    const template = templates.get(String(params.templateId))
+    if (!template) return notFound('Шаблон не найден.')
+    while (workflows.has(`wf-${nextWorkflow}`)) nextWorkflow++
+    const workflow: Workflow = { ...forTemplate(template.workflow), id: `wf-${nextWorkflow++}`, revision: 1, name: template.name }
+    storeWorkflow(workflow)
+    return HttpResponse.json(workflow, { status: 201 })
+  }),
   http.get(api('/workflows'), () => HttpResponse.json([...workflows.values()])),
   http.get(api('/workflows/:workflowId'), ({ params }) => {
     const workflow = workflows.get(String(params.workflowId))

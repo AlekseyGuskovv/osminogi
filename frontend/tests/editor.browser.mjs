@@ -431,6 +431,47 @@ try {
     throw new Error('Missing finding should return 404')
   }, '/?view=runs&workflow=wf-1&run=run-3')
 
+  await evaluate(4175, async () => {
+    async function waitFor(predicate) {
+      for (let i = 0; i < 80; i++) {
+        const value = predicate()
+        if (value) return value
+        await new Promise(resolve => setTimeout(resolve, 50))
+      }
+      throw new Error('Template catalog did not reach expected state')
+    }
+    const form = await waitFor(() => document.querySelector('.garden-template-form'))
+    if (!document.querySelector('.garden-results').textContent.includes('пока нет шаблонов')) throw new Error('Missing empty catalog state')
+    const input = form.querySelector('input')
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'Проверка PR')
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await waitFor(() => !form.querySelector('button').disabled)
+    form.requestSubmit()
+    const card = await waitFor(() => document.querySelector('[data-template-id="tpl-1"]'))
+    const { getJson } = await import('/src/api.ts')
+    const [template] = await getJson('/templates')
+    if (template.workflow.snapshotId || template.workflow.schedule ||
+      template.workflow.nodes.find(node => node.type === 'telegram').settings.channelId) {
+      throw new Error('Public template retained private settings')
+    }
+    setTimeout(() => card.querySelector('button').click(), 100)
+    return 'Templates: empty catalog, publication and scrubbed template payload passed'
+  }, '/?view=templates&workflow=wf-1')
+  await until(async () => {
+    const tabs = await (await fetch('http://127.0.0.1:' + debug + '/json/list')).json()
+    return tabs.some(tab => tab.url.endsWith('?workflow=wf-3'))
+  })
+  await evaluate(4175, async () => {
+    const { getJson } = await import('/src/api.ts')
+    const [copy, original] = await Promise.all([getJson('/workflows/wf-3'), getJson('/workflows/wf-1')])
+    if (copy.revision !== 1 || copy.name !== 'Проверка PR' || copy.snapshotId || copy.schedule ||
+      copy.nodes.find(node => node.type === 'telegram').settings.channelId ||
+      original.snapshotId !== 'pr-1' || !original.schedule) {
+      throw new Error('Copy and original are not isolated')
+    }
+    return 'Templates: copy opens in editor without modifying the original'
+  }, '/?workflow=wf-3')
+
   await evaluate(4176, async () => {
     const { installMocks } = await import('/src/mocks/worker.ts')
     await installMocks()

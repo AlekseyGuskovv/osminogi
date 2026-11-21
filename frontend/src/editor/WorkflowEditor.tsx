@@ -165,6 +165,7 @@ export function WorkflowEditor({ workflowId, ciRunId }: EditorProps) {
   return (
     <main className="garden">
       <header className="garden-top"><span className="garden-brand"><b aria-hidden="true">✳</b> Cyber Garden</span><span>Редактор сценариев</span>
+        {workflow?.id && <a href={`?view=templates&workflow=${encodeURIComponent(workflow.id)}`}>Шаблоны</a>}
         {workflow?.id && <a href={runsUrl(workflow.id)}>Запуски</a>}
       </header>
       <section className="garden-heading">
