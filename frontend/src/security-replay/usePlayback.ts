@@ -8,7 +8,7 @@ import { advanceTime, confirmedEdge, frameDuration, frameProgress, simulationEdg
 import type { PlaybackSpeed, ReplayLog } from './playback'
 
 type Edge = WorkflowDraft['edges'][number]
-type Frame = { demo: boolean; repetition: number; view: RunView; event: RunEvent; edge?: Edge }
+type Frame = { demo: boolean; repetition: number; view: RunView; event: RunEvent; completedNode?: string; edge?: Edge }
 
 export function usePlayback(log: ReplayLog | undefined, edges: readonly Edge[], speed: PlaybackSpeed, surface: RefObject<HTMLElement | null>, demo: boolean) {
   const [paused, setPaused] = useState(false)
@@ -44,8 +44,10 @@ export function usePlayback(log: ReplayLog | undefined, edges: readonly Edge[], 
         const edge = log.source === 'simulation'
           ? simulationEdge(event, events[state.index - offset + 1], edges)
           : confirmedEdge(event, state.view, edges)
+        const completedNode = event.type === 'node.status' && event.data.status === 'succeeded' &&
+          state.view.nodes[event.data.nodeId]?.status === 'running' ? event.data.nodeId : undefined
         state.view = applyRunEvent(state.view, event)
-        state.active = { demo, repetition, view: state.view, event, edge }
+        state.active = { demo, repetition, view: state.view, event, edge, completedNode }
         state.index++
         state.duration = frameDuration(event, Boolean(edge), log.source)
         setFrame(state.active)
@@ -67,17 +69,18 @@ export function usePlayback(log: ReplayLog | undefined, edges: readonly Edge[], 
 
   const current = frame?.demo === demo && frame.repetition === repetition && frame.view.id === log?.base.id ? frame : undefined
   const view = current?.view
-  const scanning = view && view.status !== 'succeeded' && view.status !== 'failed' &&
+  const activating = view && view.status !== 'succeeded' && view.status !== 'failed' &&
     Object.values(view.nodes).some(node => node.status === 'running')
   return {
     view,
     event: current?.event,
+    completedNode: playing ? current?.completedNode : undefined,
     edge: playing ? current?.edge : undefined,
     playing: Boolean(current && playing),
     paused,
     speed,
     repetition,
-    canPause: Boolean(current && (playing || scanning)),
+    canPause: Boolean(current && (playing || activating)),
     canReplay: Boolean(log?.events.length),
     partial: Boolean(log?.offset),
     toggle: () => setPaused(value => !value),

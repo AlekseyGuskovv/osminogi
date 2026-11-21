@@ -8,7 +8,7 @@ type Edge = WorkflowDraft['edges'][number]
 
 export const speeds = [0.5, 1, 2] as const
 export type PlaybackSpeed = typeof speeds[number]
-export const scannerDuration = 1800
+export const activationDuration = 1800
 export const historyLimit = 160
 
 export type ReplayLog = { base: RunView; events: readonly RunEvent[]; offset: number; source?: 'simulation' }
@@ -34,7 +34,7 @@ export function frameDuration(event: RunEvent, travels: boolean, source?: Replay
   if (event.type === 'run.finished') return 650
   if (event.type !== 'node.status' || event.data.status === 'skipped' || event.data.status === 'queued') return 0
   if (travels) return 2050
-  if (event.data.status === 'running') return scannerDuration
+  if (event.data.status === 'running') return activationDuration
   if (source === 'simulation' && event.data.status === 'succeeded') return 200
   return 900
 }

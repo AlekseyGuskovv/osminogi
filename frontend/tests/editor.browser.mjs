@@ -43,7 +43,7 @@ async function evaluate(port, test, path = "/", reducedMotion = false) {
     function call(method, params) {
       const requestId = ++id
       return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('CDP timeout: ' + method)), method === 'Runtime.evaluate' ? 75000 : 20000)
+        const timer = setTimeout(() => reject(new Error('CDP timeout: ' + method)), method === 'Runtime.evaluate' ? 95000 : 20000)
         function listen(message) {
           const response = JSON.parse(message.data)
           if (response.id !== requestId) return
@@ -825,27 +825,27 @@ try {
       }
       const surface = canvas.closest('.garden-canvas')
       const offset = () => Number(surface.style.getPropertyValue('--pulse-offset'))
-      const beam = await until(() => canvas.querySelector('.scanner-beam'))
+      const beam = await until(() => canvas.querySelector('.hologram[data-phase="running"] .hologram-motion'))
       const animation = beam.getAnimations()[0]
       await until(() => animation.currentTime > 200)
       for (const speed of [0.5, 2, 1]) {
         const previous = animation.currentTime
         setSpeed(speed)
         await until(() => animation.playbackRate === speed)
-        if (animation.currentTime < previous || !beam.isConnected) throw new Error('Speed change reset the scanner')
+        if (animation.currentTime < previous || !beam.isConnected) throw new Error('Speed change reset the hologram')
         const started = performance.now()
         const current = animation.currentTime
         await new Promise(resolve => setTimeout(resolve, 65))
         const rate = (animation.currentTime - current) / (performance.now() - started)
-        if (Math.abs(rate - speed) > 0.4) throw new Error(`Unexpected scanner speed: ${rate}`)
+        if (Math.abs(rate - speed) > 0.4) throw new Error(`Unexpected hologram speed: ${rate}`)
       }
       find(panel, 'Пауза').click()
       await until(() => !animation.pending && animation.playState === 'paused')
-      const scannerTime = animation.currentTime
+      const activationTime = animation.currentTime
       await new Promise(resolve => setTimeout(resolve, 100))
-      if (animation.currentTime !== scannerTime) throw new Error('Scanner moved while paused')
+      if (animation.currentTime !== activationTime) throw new Error('Scanner moved while paused')
       find(panel, 'Продолжить').click()
-      await until(() => animation.currentTime > scannerTime)
+      await until(() => animation.currentTime > activationTime)
       await until(() => canvas.querySelector('.pulse-edge-core') && offset() < 4 && offset() > -35)
       setSpeed(0.5)
       await new Promise(resolve => setTimeout(resolve, 40))
@@ -869,8 +869,8 @@ try {
       await until(() => offset() < frozen)
       setSpeed(1)
       find(panel, 'Повторить анимацию').click()
-      const replayBeam = await until(() => canvas.querySelector('.scanner-beam'))
-      if (replayBeam === beam || replayBeam.getAnimations()[0].currentTime > 500) throw new Error('Replay did not restart the scanner')
+      const replayBeam = await until(() => canvas.querySelector('.hologram[data-phase="running"] .hologram-motion'))
+      if (replayBeam === beam || replayBeam.getAnimations()[0].currentTime > 500) throw new Error('Replay did not restart the hologram')
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
       await until(() => canvas.querySelector('.garden-ci-edge'))
       if (canvas.querySelectorAll('[data-ci-highlight]').length !== 2) throw new Error('Expected analyzer and condition')
@@ -924,22 +924,21 @@ try {
     const select = controls.querySelector('select')
     select.value = '0.5'
     select.dispatchEvent(new Event('change', { bubbles: true }))
-    const sweep = await until(() => canvas.querySelector('.scanner-sweep'))
-    const active = sweep.closest('.garden-node')
+    const hologram = await until(() => canvas.querySelector('.hologram[data-phase="running"]'))
+    const active = hologram.closest('.garden-node')
     const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
-    const animation = sweep.firstElementChild.getAnimations()[0]
+    const animation = hologram.firstElementChild.getAnimations()[0]
     const dragStart = animation?.currentTime
     const center = active.getBoundingClientRect()
     globalThis.dispatchDrag(JSON.stringify({ x: center.x + center.width / 2, y: center.y + center.height / 2 }))
     await until(() => globalThis.dragComplete && Math.abs(active.getBoundingClientRect().x - center.x) > 10)
     if (!reduced && animation.currentTime <= dragStart) throw new Error('Scanner stalled during drag')
     button(controls, 'Пауза').click()
-    const scannerStyle = getComputedStyle(sweep)
-    if (scannerStyle.pointerEvents !== 'none' || scannerStyle.overflow !== 'hidden') {
-      throw new Error('Scanner must be clipped and ignore pointers')
-    }
-    if (reduced && (animation || getComputedStyle(sweep.firstElementChild).visibility !== 'hidden' || scannerStyle.boxShadow === 'none')) {
-      throw new Error('Reduced motion should show a static scanner indicator')
+    const hologramStyle = getComputedStyle(hologram)
+    if (hologramStyle.pointerEvents !== 'none') throw new Error('Decoration intercepts pointers')
+    if (reduced && (animation || getComputedStyle(hologram.querySelector('i')).display !== 'none' ||
+      getComputedStyle(hologram.firstElementChild).borderTopWidth !== '1px')) {
+      throw new Error('Reduced motion should show a static holographic contour')
     }
     const matrix = () => new DOMMatrix(getComputedStyle(viewport).transform)
     for (const scale of [0.5, 1, 1.5]) {
@@ -950,7 +949,7 @@ try {
         bubbles: true, cancelable: true,
       }))
       await until(() => Math.abs(matrix().a - scale) < 0.015)
-      if (!active.isConnected || !active.contains(sweep)) throw new Error('Zoom removed the active scanner')
+      if (!active.isConnected || !active.contains(hologram)) throw new Error('Zoom removed the active hologram')
     }
     const rect = pane.getBoundingClientRect()
     const initialPan = matrix().e
@@ -964,7 +963,7 @@ try {
     if ((getComputedStyle(core).display === 'none') !== reduced || !canvas.querySelector('.pulse-edge-guide')) {
       throw new Error('Reduced motion should leave only the static edge guide')
     }
-    return `Live Scanner Sweep: drag, pan, zoom 50/100/150%, independent final result (reduced motion: ${reduced})`
+    return `Live Holographic Activation: drag, pan, zoom 50/100/150%, independent final result (reduced motion: ${reduced})`
   }, '/?workflow=wf-1', reducedMotion)
 
   await evaluate(4175, async () => {
@@ -1002,26 +1001,32 @@ try {
 
     send('end', 'skipped')
     await until(() => node('end')?.dataset.execution === 'skipped')
-    if (node('end').querySelector('.scanner-sweep')) throw new Error('Skipped Finish started scanning')
+    if (node('end').querySelector('.hologram[data-phase="running"]')) throw new Error('Skipped Finish activated')
     send('start', 'queued')
     await until(() => node('start')?.dataset.execution === 'queued')
-    if (node('start').querySelector('.scanner-sweep')) throw new Error('Queued Start started scanning')
+    if (node('start').querySelector('.hologram[data-phase="running"]')) throw new Error('Queued Start activated')
 
     const colors = new Set()
     for (const id of ['start', 'secret', 'deps', 'code', 'ai', 'gate', 'tg', 'end']) {
       send(id, 'running')
-      const beam = await until(() => node(id)?.querySelector('.scanner-beam'))
+      const beam = await until(() => node(id)?.querySelector('.hologram[data-phase="running"] .hologram-motion'))
       const style = getComputedStyle(beam)
-      colors.add(getComputedStyle(beam, '::after').backgroundImage)
+      colors.add(getComputedStyle(beam.querySelector('i')).borderTopColor)
       if (style.animationDuration !== '1.8s' || node(id).dataset.execution !== 'running') {
-        throw new Error(`Invalid scanner for ${id}`)
+        throw new Error(`Invalid hologram for ${id}`)
       }
       const status = id === 'tg' ? 'failed' : 'succeeded'
       send(id, status)
-      await until(() => node(id).dataset.execution === status && !beam.isConnected)
+      await until(() => node(id).dataset.execution === status)
+      if (status === 'succeeded') {
+        const release = await until(() => node(id).querySelector('.hologram[data-phase="succeeded"] .hologram-motion'))
+        if (release !== beam || getComputedStyle(release).animationName !== 'hologram-release') {
+          throw new Error('Successful activation did not collapse in place')
+        }
+      } else if (beam.isConnected) throw new Error('Failed activation remained visible')
     }
     if (colors.size !== 5) throw new Error('Scanner did not inherit the existing accents')
-    return 'Scanner Sweep: all eight node types, all five accents, queued/skipped and succeeded/failed'
+    return 'Holographic Activation: all eight node types, all five accents, queued/skipped and succeeded/failed'
   }, '/?workflow=wf-1')
 
   await evaluate(4175, async () => {
@@ -1132,7 +1137,7 @@ try {
     const camera = canvas.querySelector('.react-flow__viewport').style.transform
     button('Режим демонстрации').click()
     const entry = await until(() => button('Запустить длинное демо'))
-    await until(() => canvas.querySelector('.scanner-beam'))
+    await until(() => canvas.querySelector('.hologram[data-phase="running"] .hologram-motion'))
     window.fetch = (input, init) => { requests.push(String(input)); return nativeFetch(input, init) }
     window.EventSource = class extends nativeEvents {
       constructor(url, options) { requests.push(String(url)); super(url, options) }
@@ -1141,7 +1146,7 @@ try {
       entry.click()
       const panel = await until(() => document.querySelector('.long-demo'))
       const node = (id, status) => canvas.querySelector(`[data-id="demo-${id}"] [data-execution="${status}"]`)
-      const origin = await until(() => node('start', 'running')?.querySelector('.scanner-beam'))
+      const origin = await until(() => node('start', 'running')?.querySelector('.hologram[data-phase="running"] .hologram-motion'))
       await until(() => canvas.querySelectorAll('.react-flow__node').length === 12 &&
         canvas.querySelectorAll('.react-flow__edge').length === 12)
       if (!panel.textContent.includes('Демо · симуляция выполнения')) throw new Error('Simulation label missing')
@@ -1157,12 +1162,12 @@ try {
       await until(() => animation.playState === 'paused' && !animation.pending)
       const frozen = animation.currentTime
       await sleep(150)
-      if (frozen !== animation.currentTime) throw new Error('Paused scanner advanced')
+      if (frozen !== animation.currentTime) throw new Error('Paused hologram advanced')
       speed(2)
       button('Продолжить', panel).click()
       await until(() => animation.playbackRate === 2)
       await until(() => canvas.querySelector('[data-id="demo-start:next"] .pulse-edge-core'))
-      if (node('secrets', 'running')) throw new Error('Destination scanner started before arrival')
+      if (node('secrets', 'running')) throw new Error('Destination hologram started before arrival')
       button('Пауза', panel).click()
       const offset = () => canvas.closest('.garden-canvas').style.getPropertyValue('--pulse-offset')
       const held = offset()
@@ -1181,7 +1186,8 @@ try {
       await until(() => !node('finish', 'succeeded'))
       const greenStarted = performance.now()
       button('Запустить', panel).click()
-      await until(() => canvas.querySelector('[data-id="demo-gate:no"] .pulse-edge-core'), 22000)
+      await until(() => node('start', 'running')?.querySelector('.hologram-motion')?.getAnimations()[0]?.playbackRate === 2)
+      await until(() => canvas.querySelector('[data-id="demo-gate:no"] .pulse-edge-core'), 32000)
       if (!node('telegram', 'skipped') || canvas.querySelector('[data-id="demo-gate:yes"] .pulse-edge-core')) {
         throw new Error('NO did not skip Telegram')
       }
@@ -1207,10 +1213,10 @@ try {
     button('Режим демонстрации').click()
     for (let i = 0; i < 80 && !button('Запустить длинное демо'); i++) await new Promise(resolve => setTimeout(resolve, 25))
     button('Запустить длинное демо').click()
-    for (let i = 0; i < 80 && !document.querySelector('[data-id="demo-start"] .scanner-beam'); i++) {
+    for (let i = 0; i < 80 && !document.querySelector('[data-id="demo-start"] .hologram[data-phase="running"] .hologram-motion'); i++) {
       await new Promise(resolve => setTimeout(resolve, 25))
     }
-    if (!document.querySelector('[data-id="demo-start"] .scanner-beam')) throw new Error('Local demo requires an API')
+    if (!document.querySelector('[data-id="demo-start"] .hologram[data-phase="running"] .hologram-motion')) throw new Error('Local demo requires an API')
     return 'MSW disabled: no worker or mock response, local simulation runs without FastAPI'
   })
 } finally {

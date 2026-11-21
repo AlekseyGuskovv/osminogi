@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { advanceTime, emptyReplay, frameDuration, frameProgress, historyLimit, scannerDuration, recordEvent } from '../src/security-replay/playback.ts'
+import { advanceTime, emptyReplay, frameDuration, frameProgress, historyLimit, activationDuration, recordEvent } from '../src/security-replay/playback.ts'
 
 const node = (seq, status = 'running', runId = 'run-1') => ({
   runId, seq, at: '', type: 'node.status', data: { nodeId: 'analyzer', status },
@@ -36,9 +36,9 @@ test('history deduplicates sequence numbers, scopes runs and keeps a bounded che
   assert.equal(log.events[0].seq, 2)
 })
 
-test('a running frame allows a full scanner pass without changing edge timing', () => {
-  assert.equal(frameDuration(node(1), false), scannerDuration)
-  assert.equal(scannerDuration, 1800)
+test('a running frame allows the node activation without changing edge timing', () => {
+  assert.equal(frameDuration(node(1), false), activationDuration)
+  assert.equal(activationDuration, 1800)
   assert.equal(frameDuration(node(2, 'succeeded'), true), 2050)
   assert.equal(frameDuration(node(3, 'skipped'), false), 0)
 })

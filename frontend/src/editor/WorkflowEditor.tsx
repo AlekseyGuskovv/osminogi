@@ -27,7 +27,7 @@ import type { DemoScenario } from '../security-replay/longDemo'
 import { PresentationMode } from '../security-replay/PresentationMode'
 import { usePresentation } from '../security-replay/usePresentation'
 import { branchChoice, branchOf } from '../security-replay/state'
-import { ScannerSweep } from '../security-replay/ScannerSweep'
+import { HolographicActivation } from '../security-replay/HolographicActivation'
 import { PlaybackControls } from '../security-replay/PlaybackControls'
 import { usePlayback } from '../security-replay/usePlayback'
 import { useRecordedRun } from '../security-replay/useRecordedRun'
@@ -80,7 +80,7 @@ function fittedViewport(workflow: EditableWorkflow, width: number, height: numbe
 }
 
 const statuses = { queued: 'В очереди', running: 'Выполняется', succeeded: 'Готово', failed: 'Ошибка', skipped: 'Пропущен' }
-type Block = Node<{ kind: NodeType; detail?: string; status?: keyof typeof statuses; scanner?: { speed: PlaybackSpeed; paused: boolean; key: string }; arrival?: boolean; branch?: 'yes' | 'no'; critical?: boolean; highlighted?: boolean; ciPassed?: boolean; muted?: boolean }, 'workflow'>
+type Block = Node<{ kind: NodeType; detail?: string; status?: keyof typeof statuses; activation?: { phase: 'running' | 'succeeded'; speed: PlaybackSpeed; paused: boolean; key: string }; arrival?: boolean; branch?: 'yes' | 'no'; critical?: boolean; highlighted?: boolean; ciPassed?: boolean; muted?: boolean }, 'workflow'>
 export type EditorProps = { workflowId?: string; ciRunId?: string; copiedTemplate?: boolean; explain?: boolean }
 
 const WorkflowBlock = memo(function WorkflowBlock({ data, selected }: NodeProps<Block>) {
@@ -88,7 +88,7 @@ const WorkflowBlock = memo(function WorkflowBlock({ data, selected }: NodeProps<
   const [label, description, tone] = labels[kind]
   return (
     <div className={`garden-node ${selected ? 'selected' : ''}`} data-node-tone={tone} data-execution={data.status} data-arrival={data.arrival || undefined} data-critical={data.critical || undefined} data-branch={data.branch} data-ci-passed={data.ciPassed || undefined} data-explain-muted={data.muted || undefined} data-ci-highlight={data.highlighted || undefined}>
-      {data.scanner && <ScannerSweep key={data.scanner.key} speed={data.scanner.speed} paused={data.scanner.paused} />}
+      {data.activation && <HolographicActivation key={data.activation.key} phase={data.activation.phase} speed={data.activation.speed} paused={data.activation.paused} />}
       {kind !== 'start' && <Handle type="target" position={Position.Left} aria-label="Вход" />}
       <span className="garden-icon"><Icon name={kind} size={17} /></span>
       <span className="garden-node-copy"><strong>{label}</strong><span>{data.detail ?? description}</span>
@@ -225,10 +225,10 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
   const visualFinished = playback.event?.type === 'run.finished' && !playback.playing
   const visualRun = !demoOpen && (!liveLog || visualFinished) ? runView : playback.view
   const playbackView = playback.view
-  const scannerRunId = playbackView?.status === 'succeeded' || playbackView?.status === 'failed' ? undefined : playbackView?.id
-  const scanner = useMemo(() => scannerRunId ? {
-    speed: playback.speed, paused: playback.paused, key: `${scannerRunId}:${playback.repetition}`,
-  } : undefined, [scannerRunId, playback.speed, playback.paused, playback.repetition])
+  const activationRunId = playbackView?.status === 'succeeded' || playbackView?.status === 'failed' ? undefined : playbackView?.id
+  const activation = useMemo(() => activationRunId ? {
+    speed: playback.speed, paused: playback.paused, key: `${activationRunId}:${playback.repetition}`,
+  } : undefined, [activationRunId, playback.speed, playback.paused, playback.repetition])
   const activeEvent = playback.event?.type === 'node.status' ? playback.event : undefined
   const pulseNode = activeEvent && (playback.playing || activeEvent.data.status === 'running') ? activeEvent.data.nodeId : undefined
   const factCi = demoOpen ? demo.run?.ci : runView?.ci
@@ -515,17 +515,20 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
     }
   }
 
+  const completedNode = playback.completedNode
   const nodes = useMemo<Block[]>(() => (displayedWorkflow?.nodes ?? []).map(node => ({
     id: node.id, type: 'workflow', zIndex: 2, position: { x: node.x, y: node.y },
     data: { kind: node.type, detail: longDemo ? demoDetails.get(node.id) : node.type === 'condition' ? conditionLabel(node.settings) : undefined, status: visualRun?.nodes[node.id]?.status,
-      scanner: playbackView?.nodes[node.id]?.status === 'running' ? scanner : undefined,
+      activation: activation && playbackView?.nodes[node.id]?.status === 'running'
+        ? { ...activation, phase: 'running' } : activation && node.id === completedNode
+          ? { ...activation, phase: 'succeeded' } : undefined,
       arrival: playback.edge?.to === node.id,
       branch: branchOf(visualRun?.nodes[node.id]?.output) ?? visualRun?.nodes[node.id]?.branch,
       critical: node.id === pulseNode && node.id === criticalNode && Boolean(criticalFinding) && visualRun?.nodes[node.id]?.status === 'succeeded',
       highlighted: highlight?.nodeIds.includes(node.id),
       ciPassed: highlightRun?.ci.status === 'passed',
       muted: Boolean(explanationRun && highlight?.nodeIds.length && !highlight.nodeIds.includes(node.id)) }, selected: node.id === selectedId,
-  })), [displayedWorkflow?.nodes, longDemo, visualRun, highlight, selectedId, explanationRun, highlightRun, pulseNode, playbackView, scanner, playback.edge, criticalNode, criticalFinding])
+  })), [displayedWorkflow?.nodes, longDemo, visualRun, highlight, selectedId, explanationRun, highlightRun, pulseNode, playbackView, activation, completedNode, playback.edge, criticalNode, criticalFinding])
   const edges = useMemo(() => (displayedWorkflow?.edges ?? []).map(edge => {
     const highlighted = highlight?.edge?.from === edge.from && highlight.edge.branch === edge.branch
     const id = `${edge.from}:${edge.branch}`
