@@ -113,7 +113,18 @@ try {
     condition.querySelector('.garden-node').click()
     assert(condition.querySelectorAll('.source').length === 2, 'Two condition outputs')
     const settings = document.querySelector('[aria-label="Настройки блока"]')
-    await waitFor(() => settings.textContent.includes('critical'))
+    await waitFor(() => settings.querySelector('select option[value="critical"]'))
+    const threshold = settings.querySelector('select:has(option[value="critical"])')
+    assert(threshold.value === 'critical', 'Initial condition threshold')
+    threshold.value = 'high'
+    threshold.dispatchEvent(new Event('change', { bubbles: true }))
+    await waitFor(() => threshold.value === 'high')
+    document.querySelector('[data-id="start"] .garden-node').click()
+    await waitFor(() => settings.querySelector('input[type="checkbox"]'))
+    settings.querySelector('input[type="checkbox"]').click()
+    await waitFor(() => settings.querySelector('input[type="time"]')?.value === '09:00')
+    document.querySelector('[data-id="tg"] .garden-node').click()
+    await waitFor(() => settings.querySelector('input')?.value === 'team-demo')
 
     const canvas = document.querySelector('.garden-canvas')
     const rect = condition.getBoundingClientRect()
@@ -123,7 +134,7 @@ try {
     await waitFor(() => Math.abs(condition.getBoundingClientRect().left - rect.left) > 5)
     assert(canvas.contains(condition), 'Dragged condition still on canvas')
 
-    const select = document.querySelector('select')
+    const select = document.querySelector('.garden-actions select')
     assert(select.options.length === 5, 'Snapshot options loaded from API')
     select.value = 'pr-1'
     select.dispatchEvent(new Event('change', { bubbles: true }))
@@ -133,7 +144,11 @@ try {
     await waitFor(() => document.querySelector('[role="status"]')?.textContent.includes('ревизия 2'))
     const { getJson } = await import('/src/api.ts')
     const workflow = await getJson('/workflows/wf-1')
-    assert(workflow.nodes.find(node => node.id === 'gate').x !== 430, 'Drag coordinates saved to API')
+    const gate = workflow.nodes.find(node => node.id === 'gate')
+    assert(gate.x !== 430, 'Drag coordinates saved to API')
+    assert(gate.settings.value === 'high', 'Condition form updates saved threshold')
+    assert(workflow.schedule?.timezone === 'Europe/Moscow', 'Schedule form updates saved workflow')
+    assert(workflow.nodes.find(node => node.id === 'tg').settings.channelId === 'team-demo', 'Telegram channel remains in graph')
     buttons.find(button => button.textContent.includes('Запустить')).click()
     await waitFor(() => document.querySelector('[role="status"]')?.textContent.includes('в очередь'))
 
@@ -159,7 +174,7 @@ try {
     await waitFor(() => !document.querySelector('.react-flow__node[data-id="gate"]'))
     assert(!edgePath('yes') && !edgePath('no'), 'Deleted block has no outgoing edges')
     assert(document.querySelectorAll('.react-flow__edge').length === 4, 'Incoming edge removed; unrelated edges preserved')
-    return 'Editor: graph, palette, selection, drag, branch connections, deletion, API save/run and error recovery passed'
+    return 'Editor: graph, palette, selection, drag, branch connections, settings, deletion, API save/run and error recovery passed'
   })
 
   await evaluate(4176, async () => {

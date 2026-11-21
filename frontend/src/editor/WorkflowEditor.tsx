@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { getJson, postJson } from '../api'
 import { nodeTypes } from '../workflow'
 import type { NodeType, Workflow } from '../workflow'
+import { NodeSettings } from './NodeSettings'
 import { addNode, connect, removeNode } from './graph'
 import '@xyflow/react/dist/style.css'
 import './editor.css'
@@ -161,8 +162,11 @@ export function WorkflowEditor({ workflowId }: EditorProps) {
         <aside className="garden-panel garden-settings" aria-label="Настройки блока"><h2>Настройки</h2>
           {activeNode ? <>
             <h3>{labels[activeNode.type][0]}</h3><p className="garden-meta">{activeNode.id}</p>
-            {activeNode.type === 'condition' && <p>Порог · {String(activeNode.settings.value ?? '—')}</p>}
-            {activeNode.type === 'telegram' && <p>Канал · {String(activeNode.settings.channelId ?? '—')}</p>}
+            <NodeSettings node={activeNode} schedule={workflow.schedule} disabled={pending}
+              onSettingsChange={settings => setWorkflow(current => current && ({
+                ...current, nodes: current.nodes.map(node => node.id === activeNode.id ? { ...node, settings } : node),
+              }))}
+              onScheduleChange={schedule => setWorkflow(current => current && ({ ...current, schedule }))} />
             <dl><dt>X</dt><dd>{Math.round(activeNode.x)}</dd><dt>Y</dt><dd>{Math.round(activeNode.y)}</dd></dl>
             <button disabled={pending} onClick={() => {
               setWorkflow(current => current && removeNode(current, selectedId))
