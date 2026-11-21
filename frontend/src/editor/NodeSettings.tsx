@@ -1,3 +1,4 @@
+import { TelegramConnectionPicker } from './TelegramConnectionPicker'
 import type { WorkflowDraft } from '../workflow'
 
 type Props = {
@@ -33,8 +34,13 @@ export function NodeSettings({ node, schedule, disabled, onSettingsChange, onSch
   if (node.type === 'telegram') {
     return <fieldset disabled={disabled}>
       <legend>Доставка</legend>
-      <label>ID канала<input value={String(node.settings.channelId ?? '')}
-        onChange={event => onSettingsChange({ ...node.settings, channelId: event.target.value })} /></label>
+      <TelegramConnectionPicker value={String(node.settings.channelId ?? '')} disabled={disabled}
+        onSelect={channelId => {
+          const settings = { ...node.settings }
+          if (channelId) settings.channelId = channelId
+          else delete settings.channelId
+          onSettingsChange(settings)
+        }} />
     </fieldset>
   }
 

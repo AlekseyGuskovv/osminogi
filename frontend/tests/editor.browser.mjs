@@ -60,6 +60,14 @@ async function evaluate(port, test, path = "/") {
       const result = await call('Runtime.evaluate', { expression: '!!document.querySelector("#root")?.children.length', returnByValue: true })
       return result.result.value
     })
+    await call('Runtime.enable', {})
+    let syntheticTokenLogged = false
+    socket.addEventListener('message', message => {
+      const event = JSON.parse(message.data)
+      if (event.method === 'Runtime.consoleAPICalled' && JSON.stringify(event.params.args).includes('DEMO-CONNECTION-TOKEN')) {
+        syntheticTokenLogged = true
+      }
+    })
     await call('Runtime.addBinding', { name: 'dispatchDrag' })
     await call('Runtime.addBinding', { name: 'dispatchClick' })
     socket.addEventListener('message', async message => {
@@ -88,6 +96,7 @@ async function evaluate(port, test, path = "/") {
       returnByValue: true,
     })
     if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text)
+    if (syntheticTokenLogged) throw new Error('A connection token appeared in console output')
     console.log(result.result.value)
   } finally {
     socket.close()
@@ -134,7 +143,7 @@ try {
     settings.querySelector('input[type="checkbox"]').click()
     await waitFor(() => settings.querySelector('input[type="time"]')?.value === '09:00')
     document.querySelector('[data-id="tg"] .garden-node').click()
-    await waitFor(() => settings.querySelector('input')?.value === 'team-demo')
+    await waitFor(() => settings.querySelector('.garden-connection-select')?.value === 'team-demo')
 
     const canvas = document.querySelector('.garden-canvas')
     const rect = condition.getBoundingClientRect()
@@ -580,6 +589,54 @@ try {
     const run = await getJson('/runs/' + runId)
     if (run.snapshotId !== selected || !run.report.summary) throw new Error('Imported snapshot was not used in final report')
     return 'Snapshot picker: rejected upload retained selection; valid ZIP selected and used in a completed run'
+  })
+
+  await evaluate(4175, async () => {
+    async function waitFor(predicate) {
+      for (let i = 0; i < 100; i++) {
+        const value = predicate()
+        if (value) return value
+        await new Promise(resolve => setTimeout(resolve, 50))
+      }
+      throw new Error('Telegram picker did not reach expected state')
+    }
+    const node = await waitFor(() => document.querySelector('[data-id="tg"] .garden-node'))
+    node.click()
+    const picker = await waitFor(() => document.querySelector('.garden-connection-picker'))
+    await waitFor(() => picker.querySelector('option[value="team-demo"]')?.textContent === 'Чат команды')
+    picker.querySelector('summary').click()
+    const form = picker.querySelector('form')
+    const token = 'DEMO-CONNECTION-TOKEN'
+    if (form.elements.token.type !== 'password') throw new Error('Token input must be masked')
+    form.elements.name.value = 'Учебный чат'
+    form.elements.chatId.value = '123456'
+    form.elements.token.value = token
+    form.requestSubmit()
+    const selected = await waitFor(() => {
+      const value = picker.querySelector('select').value
+      return value.startsWith('telegram-') && value
+    })
+    if (form.elements.token.value !== '') throw new Error('Token input not cleared')
+    const save = [...document.querySelectorAll('.garden-actions button')].find(item => item.textContent === 'Сохранить')
+    save.click()
+    await waitFor(() => document.querySelector('.garden-notice[role="status"]')?.textContent.includes('Сохранено'))
+    const { getJson, postJson } = await import('/src/api.ts')
+    const [workflow, connections] = await Promise.all([getJson('/workflows/wf-1'), getJson('/connections')])
+    const settings = workflow.nodes.find(item => item.id === 'tg').settings
+    const metadata = connections.find(item => item.id === selected)
+    if (settings.channelId !== selected || 'token' in settings ||
+      Object.keys(metadata).sort().join() !== 'configured,id,name,type' ||
+      JSON.stringify([workflow, connections, { ...localStorage }]).includes(token)) {
+      throw new Error('Graph or connection metadata contains unsupported data')
+    }
+    const accepted = await postJson('/workflows/wf-3/runs', { trigger: 'manual', snapshotId: 'pr-1' })
+    await new Promise(resolve => setTimeout(resolve, 700))
+    const run = await getJson('/runs/' + accepted.id)
+    if (run.ci.status !== 'failed' || run.delivery !== 'failed' ||
+      run.steps.find(step => step.nodeId === 'tg')?.error?.code !== 'CONNECTION_REQUIRED') {
+      throw new Error('Missing Telegram connection should not change CI result')
+    }
+    return 'Telegram: masked input, cleared token, metadata-only storage and CONNECTION_REQUIRED passed'
   })
 
   await evaluate(4176, async () => {

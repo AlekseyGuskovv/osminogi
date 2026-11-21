@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import type { Template } from '../templates/types'
 import { nodeTypes } from '../workflow'
-import type { Branch, Workflow, WorkflowDraft } from '../workflow'
+import type { Branch, ConnectionRef, Workflow, WorkflowDraft } from '../workflow'
 import { inspectZip } from './zip'
 import { runEvents } from './events'
 import { compareFindings, initialWorkflow, makeRun, snapshots } from './fixtures'
@@ -43,6 +43,20 @@ try {
 } catch {
   // Keep the catalog available without persistence.
 }
+const connectionStorageKey = 'cyber-garden.mock.connections.v2'
+const connections = new Map<string, ConnectionRef>([
+  ['team-demo', { id: 'team-demo', type: 'telegram', name: 'Чат команды', configured: true }],
+])
+try {
+  const saved = globalThis.localStorage?.getItem(connectionStorageKey)
+  if (saved) for (const connection of JSON.parse(saved) as ConnectionRef[]) connections.set(connection.id, connection)
+} catch {
+  // Fall back to the demo connection without exposing request bodies.
+}
+function channelConfigured(id: unknown): boolean {
+  return typeof id === 'string' && connections.get(id)?.configured === true
+}
+
 let nextTemplate = 1
 const snapshotStorageKey = 'cyber-garden.mock.snapshots.v2'
 let importedSnapshots: typeof snapshots = []
@@ -190,7 +204,7 @@ function storeRun(
   const analyzers = [...new Set(workflow.nodes
     .map(node => node.type)
     .filter(type => type === 'secrets' || type === 'sca' || type === 'sast'))].sort().join(',')
-  runs.set(id, { result: makeRun(id, workflow, request, scenario), at, readyAt, analyzers, workflow })
+  runs.set(id, { result: makeRun(id, workflow, request, scenario, channelConfigured), at, readyAt, analyzers, workflow })
 }
 
 storeRun('run-existing', initialWorkflow, { trigger: 'ci', baseSnapshotId: 'main-critical', snapshotId: 'pr-1' }, '2026-11-20T09:00:00Z', 0)
@@ -252,6 +266,25 @@ export const handlers = [
       // Keep the imported snapshot available on this page.
     }
     return HttpResponse.json(snapshot, { status: 201 })
+  }),
+  http.get(api('/connections'), () => HttpResponse.json([...connections.values()])),
+  http.post(api('/connections'), async ({ request }) => {
+    const body = await readBody(request)
+    if (body?.type !== 'telegram' || typeof body.name !== 'string' || !body.name.trim() ||
+      typeof body.chatId !== 'string' || !body.chatId.trim() || typeof body.token !== 'string' || !body.token.trim()) {
+      return error(422, 'INVALID_REQUEST', 'Укажите название, Chat ID и токен бота.')
+    }
+    // The demo needs only public metadata for its simulated delivery.
+    const connection: ConnectionRef = {
+      id: `telegram-${crypto.randomUUID()}`, type: 'telegram', name: body.name.trim(), configured: true,
+    }
+    connections.set(connection.id, connection)
+    try {
+      globalThis.localStorage?.setItem(connectionStorageKey, JSON.stringify([...connections.values()]))
+    } catch {
+      // Keep the connection available in this page.
+    }
+    return HttpResponse.json(connection, { status: 201 })
   }),
   http.get(api('/templates'), () => HttpResponse.json([...templates.values()])),
   http.post(api('/templates'), async ({ request }) => {
@@ -433,7 +466,7 @@ export const handlers = [
     while (next && !visited.has(next)) {
       visited.add(next)
       const node = workflow.nodes.find(item => item.id === next)
-      if (node?.type === 'telegram' && node.settings.channelId) {
+      if (node?.type === 'telegram' && channelConfigured(node.settings.channelId)) {
         wouldNotify = true
         break
       }

@@ -84,7 +84,13 @@ export function findingsFor(workflow: Workflow, snapshotId: string): Finding[] {
   return findings
 }
 
-export function makeRun(id: string, workflow: Workflow, request: RunRequest, scenario?: RunScenario): Run {
+export function makeRun(
+  id: string,
+  workflow: Workflow,
+  request: RunRequest,
+  scenario: RunScenario | undefined,
+  channelConfigured: (id: unknown) => boolean,
+): Run {
   const { snapshotId, baseSnapshotId } = request
   const findings = scenario === 'empty' || scenario === 'scanError' ? [] : findingsFor(workflow, snapshotId)
   const baseline = baseSnapshotId && scenario !== 'empty' && scenario !== 'scanError'
@@ -106,8 +112,9 @@ export function makeRun(id: string, workflow: Workflow, request: RunRequest, sce
         branch: gate ? branch : null,
       }
   const telegram = workflow.nodes.find(node => node.type === 'telegram')
+  const connectionRequired = !scanFailed && critical && telegram && !channelConfigured(telegram.settings.channelId)
   const delivery = !scanFailed && critical && telegram
-    ? scenario === 'telegramError' ? 'failed' : 'sent'
+    ? scenario === 'telegramError' || connectionRequired ? 'failed' : 'sent'
     : 'skipped'
   const steps: Step[] = []
   if (scanFailed) {
@@ -125,7 +132,11 @@ export function makeRun(id: string, workflow: Workflow, request: RunRequest, sce
     const finish = workflow.nodes.find(node => node.type === 'finish')
     if (secret) steps.push({ nodeId: secret.id, status: 'succeeded' })
     if (gate) steps.push({ nodeId: gate.id, status: 'succeeded', branch })
-    if (telegram) steps.push({ nodeId: telegram.id, status: delivery === 'skipped' ? 'skipped' : delivery === 'failed' ? 'failed' : 'succeeded' })
+    if (telegram) steps.push({
+      nodeId: telegram.id,
+      status: delivery === 'skipped' ? 'skipped' : delivery === 'failed' ? 'failed' : 'succeeded',
+      ...(connectionRequired ? { error: { code: 'CONNECTION_REQUIRED', message: 'Выберите подключение Telegram.' } } : {}),
+    })
     if (finish) steps.push({ nodeId: finish.id, status: delivery === 'skipped' ? 'succeeded' : 'skipped' })
   }
 

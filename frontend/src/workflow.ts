@@ -9,3 +9,5 @@ export type WorkflowDraft = {
   edges: { from: string; to: string; branch: Branch }[]
 }
 export type Workflow = WorkflowDraft & { id: string; revision: number }
+
+export type ConnectionRef = { id: string; type: 'telegram'; name: string; configured: boolean }

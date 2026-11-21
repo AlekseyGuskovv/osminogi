@@ -21,5 +21,6 @@ async function startWorker(): Promise<void> {
   await worker.start({
     serviceWorker: { url: `${import.meta.env.BASE_URL}mockServiceWorker.js` },
     onUnhandledFrame: 'bypass',
+    quiet: true,
   })
 }
