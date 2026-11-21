@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { getJson, postJson } from '../api.ts'
 import { subscribeRun } from './events.ts'
+import type { Ci } from './types.ts'
 import type { CiStatus, RunEvent, RunStatus } from './events.ts'
 
 export type RunRequest = {
@@ -44,13 +45,14 @@ export type RunView = {
   id: string
   status: RunStatus
   ciStatus?: CiStatus
+  ci?: Ci
   nodes: Record<string, NodeView>
   lastNodeEvent?: { id: string; seq: number; output?: unknown }
 }
 type RunSummary = {
   id: string
   status: RunStatus
-  ci: { status: CiStatus }
+  ci: Ci
   steps: ({ nodeId: string } & NodeView)[]
 }
 
@@ -63,7 +65,7 @@ export function applyRunEvent(view: RunView, event: RunEvent): RunView {
   return { ...view, lastNodeEvent: { id: nodeId, seq: event.seq, output: change.output }, nodes: { ...view.nodes, [nodeId]: { ...view.nodes[nodeId], ...change } } }
 }
 
-export function useRunStatus(runId?: string) {
+export function useRunStatus(runId?: string, onEvent?: (event: RunEvent) => void) {
   const [view, setView] = useState<RunView>()
 
   useEffect(() => {
@@ -77,12 +79,13 @@ export function useRunStatus(runId?: string) {
         for (const { nodeId, ...step } of run.steps) {
           nodes[nodeId] = { ...nodes[nodeId], ...step }
         }
-        return { id, status: run.status, ciStatus: run.ci.status, nodes }
+        return { id, status: run.status, ciStatus: run.ci.status, ci: run.ci, nodes }
       })
       return run.status === 'queued' || run.status === 'running'
     }
 
     const unsubscribe = subscribeRun(id, async event => {
+      onEvent?.(event)
       setView(current => applyRunEvent(
         current?.id === id ? current : { id, status: 'queued', nodes: {} },
         event,
@@ -93,7 +96,7 @@ export function useRunStatus(runId?: string) {
       active = false
       unsubscribe()
     }
-  }, [runId])
+  }, [runId, onEvent])
 
   return view?.id === runId ? view : undefined
 }

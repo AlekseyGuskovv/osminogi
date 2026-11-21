@@ -7,7 +7,7 @@ import type { SnapshotRef } from '../api'
 import { getHighlight } from '../runs/ci'
 import type { Run } from '../runs/types'
 import { runsUrl } from '../runs/navigation'
-import { useRunStatus, useStartRun } from '../runs/useRun'
+import { useStartRun } from '../runs/useRun'
 import { nodeTypes } from '../workflow'
 import type { NodeType, Workflow } from '../workflow'
 import { newWorkflow, saveDraft } from './useWorkflow'
@@ -23,7 +23,11 @@ import { orderGraph } from './layout'
 import { ExplainableCI } from '../security-replay/ExplainableCI'
 import { PresentationMode } from '../security-replay/PresentationMode'
 import { usePresentation } from '../security-replay/usePresentation'
-import { pulseFor } from '../security-replay/state'
+import { branchChoice, branchOf } from '../security-replay/state'
+import { PlaybackControls } from '../security-replay/PlaybackControls'
+import { usePlayback } from '../security-replay/usePlayback'
+import { useRecordedRun } from '../security-replay/useRecordedRun'
+import type { PlaybackSpeed } from '../security-replay/playback'
 import { newNodeSize, placeNode } from './placement'
 import type { Point } from './graph'
 
@@ -45,6 +49,8 @@ const palette = [
   { title: 'Анализ', types: ['secrets', 'sca', 'sast'] },
   { title: 'Обработка', types: ['ai', 'telegram'] },
 ] as const
+
+const noEdges: EditableWorkflow['edges'] = []
 
 const severity = { critical: 'Критический', high: 'Высокий', medium: 'Средний', low: 'Низкий' }
 
@@ -70,18 +76,19 @@ function fittedViewport(workflow: EditableWorkflow, width: number, height: numbe
 }
 
 const statuses = { queued: 'В очереди', running: 'Выполняется', succeeded: 'Готово', failed: 'Ошибка', skipped: 'Пропущен' }
-type Block = Node<{ kind: NodeType; detail?: string; status?: keyof typeof statuses; highlighted?: boolean; ciPassed?: boolean; muted?: boolean }, 'workflow'>
+type Block = Node<{ kind: NodeType; detail?: string; status?: keyof typeof statuses; pulse?: 'active' | 'arrival'; branch?: 'yes' | 'no'; critical?: boolean; highlighted?: boolean; ciPassed?: boolean; muted?: boolean }, 'workflow'>
 export type EditorProps = { workflowId?: string; ciRunId?: string; copiedTemplate?: boolean; explain?: boolean }
 
 const WorkflowBlock = memo(function WorkflowBlock({ data, selected }: NodeProps<Block>) {
   const { kind } = data
   const [label, description, tone] = labels[kind]
   return (
-    <div className={`garden-node ${selected ? 'selected' : ''}`} data-node-tone={tone} data-execution={data.status} data-ci-passed={data.ciPassed || undefined} data-explain-muted={data.muted || undefined} data-ci-highlight={data.highlighted || undefined}>
+    <div className={`garden-node ${selected ? 'selected' : ''}`} data-node-tone={tone} data-execution={data.status} data-pulse={data.pulse} data-critical={data.critical || undefined} data-branch={data.branch} data-ci-passed={data.ciPassed || undefined} data-explain-muted={data.muted || undefined} data-ci-highlight={data.highlighted || undefined}>
+      {data.pulse && <span aria-hidden="true" className="pulse-halo" />}
       {kind !== 'start' && <Handle type="target" position={Position.Left} aria-label="Вход" />}
       <span className="garden-icon"><Icon name={kind} size={17} /></span>
       <span className="garden-node-copy"><strong>{label}</strong><span>{data.detail ?? description}</span>
-        {data.status && <small data-node-status={data.status}>{statuses[data.status]}</small>}
+        {data.status && <small data-node-status={data.status}>{statuses[data.status]}{data.branch && ` · ${data.branch.toUpperCase()}`}</small>}
       </span>
       {kind === 'condition' ? <>
         <span className="garden-port yes" aria-hidden="true">YES</span>
@@ -109,7 +116,11 @@ function WorkflowEdge(props: EdgeProps) {
   return <>
     <BaseEdge id={props.id} path={path} style={props.style} markerEnd={props.markerEnd}
       interactionWidth={props.interactionWidth} />
-    {typeof props.data?.pulse === 'number' && <path key={props.data.pulse} d={path} pathLength={100} className="replay-edge-pulse" />}
+    {props.data?.pulse === true && <g className="replay-edge-pulse" aria-hidden="true">
+      <path d={path} className="pulse-edge-guide" />
+      <path d={path} pathLength={100} className="pulse-edge-tail" />
+      <path d={path} pathLength={100} className="pulse-edge-core" />
+    </g>}
   </>
 }
 
@@ -139,7 +150,10 @@ const FlowCanvas = memo(function FlowCanvas({
       return nodes.map(node => {
         const previous = existing.get(node.id)
         // Dropping measured dimensions invalidates React Flow's cached handle bounds.
-        return previous?.measured ? { ...node, measured: previous.measured } : node
+        return previous
+          ? { ...node, measured: previous.measured, dragging: previous.dragging,
+              position: previous.dragging ? previous.position : node.position }
+          : node
       })
     })
   }, [nodes, setLocalNodes])
@@ -191,9 +205,18 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
   const [saving, setSaving] = useState(false)
   const { start, starting, accepted, clearAccepted } = useStartRun()
   const pending = saving || starting
-  const runView = useRunStatus(accepted?.id)
+  const { view: runView, log: liveLog } = useRecordedRun(accepted?.id)
+  const [speed, setSpeed] = useState<PlaybackSpeed>(1)
+  const playback = usePlayback(demoOpen ? demo.log : liveLog, workflow?.edges ?? noEdges, speed, canvas, demoOpen)
   const runStatus = runView?.status ?? accepted?.status
-  const visualRun = demoOpen ? demo.view : runView
+  const visualFinished = playback.event?.type === 'run.finished' && !playback.playing
+  const visualRun = !demoOpen && (!liveLog || visualFinished) ? runView : playback.view
+  const activeEvent = playback.event?.type === 'node.status' ? playback.event : undefined
+  const pulseNode = activeEvent && (playback.playing || activeEvent.data.status === 'running') ? activeEvent.data.nodeId : undefined
+  const factCi = demoOpen ? demo.run?.ci : runView?.ci
+  const criticalNode = factCi?.reason === 'CRITICAL_FOUND' ? factCi.nodeId : undefined
+  const criticalFinding = factCi?.reason === 'CRITICAL_FOUND' ? factCi.findingId : undefined
+  const activeLabel = workflow?.nodes.find(node => node.id === (playback.edge?.from ?? pulseNode))?.type
   const explanationRun = demoOpen && demoStage === 1 ? demo.run : explanationOpen ? ciRun : undefined
   const highlightRun = demoOpen ? demoStage === 3 ? demoCompareRun ?? demo.run : explanationRun : ciRun
   const [notice, setNotice] = useState<{ text: string; error?: boolean }>()
@@ -231,7 +254,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
   function openDemo() {
     savedCamera.current = flow.current?.getViewport()
     cameraTouched.current = true
-    demo.restart()
+    playback.restart()
     setDemoStage(0)
     setDemoCompareRun(undefined)
     setDemoOpen(true)
@@ -422,6 +445,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
         setSavedWorkflow(saved)
         setNotice({ text: `Сохранено · ревизия ${saved.revision}` })
       } else if (workflow.id) {
+        playback.restart()
         const run = await start(workflow.id, { trigger: 'manual', snapshotId })
         if (run) setNotice({ text: `${run.id} поставлен в очередь` })
       }
@@ -434,15 +458,20 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
 
   const nodes = useMemo<Block[]>(() => (workflow?.nodes ?? []).map(node => ({
     id: node.id, type: 'workflow', zIndex: 2, position: { x: node.x, y: node.y },
-    data: { kind: node.type, detail: node.type === 'condition' ? conditionLabel(node.settings) : undefined, status: visualRun?.nodes[node.id]?.status, highlighted: highlight?.nodeIds.includes(node.id),
+    data: { kind: node.type, detail: node.type === 'condition' ? conditionLabel(node.settings) : undefined, status: visualRun?.nodes[node.id]?.status,
+      pulse: playback.edge?.to === node.id ? 'arrival' : node.id === (playback.edge?.from ?? pulseNode) ? 'active' : undefined,
+      branch: branchOf(visualRun?.nodes[node.id]?.output) ?? visualRun?.nodes[node.id]?.branch,
+      critical: node.id === pulseNode && node.id === criticalNode && Boolean(criticalFinding) && visualRun?.nodes[node.id]?.status === 'succeeded',
+      highlighted: highlight?.nodeIds.includes(node.id),
       ciPassed: highlightRun?.ci.status === 'passed',
       muted: Boolean(explanationRun && highlight?.nodeIds.length && !highlight.nodeIds.includes(node.id)) }, selected: node.id === selectedId,
-  })), [workflow?.nodes, visualRun, highlight, selectedId, explanationRun, highlightRun])
+  })), [workflow?.nodes, visualRun, highlight, selectedId, explanationRun, highlightRun, pulseNode, playback.edge, criticalNode, criticalFinding])
   const edges = useMemo(() => (workflow?.edges ?? []).map(edge => {
     const highlighted = highlight?.edge?.from === edge.from && highlight.edge.branch === edge.branch
     const id = `${edge.from}:${edge.branch}`
     const related = selectedEdge === id || (selectedId !== '' && (edge.from === selectedId || edge.to === selectedId))
-    const { choice, pulse } = pulseFor(edge, visualRun)
+    const choice = branchChoice(edge, visualRun)
+    const pulse = playback.edge?.from === edge.from && playback.edge.branch === edge.branch && playback.edge.to === edge.to
     const color = choice === 'taken' ? '#72e3ac' : highlighted ? highlightRun?.ci.status === 'passed' ? '#72e3ac' : '#f1747b' : related ? '#72e3ac' : edge.branch === 'yes' ? '#80a993' : edge.branch === 'no' ? '#be9e6b' : '#71868f'
     return {
       id, source: edge.from, target: edge.to, sourceHandle: edge.branch, type: 'workflow', interactionWidth: 8, zIndex: 0,
@@ -452,7 +481,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
       style: { stroke: color, strokeWidth: highlighted || related || choice === 'taken' ? 2.6 : 1.6, opacity: choice === 'alternate' ? .32 : undefined },
       className: highlighted ? 'garden-ci-edge' : related ? 'garden-related-edge' : undefined,
     }
-  }), [workflow?.edges, highlight, selectedId, selectedEdge, visualRun, highlightRun])
+  }), [workflow?.edges, highlight, selectedId, selectedEdge, visualRun, highlightRun, playback.edge])
 
   return (
     <div className="garden-shell" data-replay-open={demoOpen}>
@@ -515,16 +544,21 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
         <a href={runsUrl(workflow.id, accepted.id)}>{accepted.id}</a> <span data-run-status={runStatus}>{{
           queued: 'В очереди', running: 'Выполняется', succeeded: 'Проверка завершена', failed: 'Проверка завершилась ошибкой',
         }[runStatus ?? 'queued']}</span>
-        {runView?.ciStatus && <span data-ci-status={runView.ciStatus}>CI · {runView.ciStatus}</span>}
+        {runView?.ciStatus && <span className={visualFinished ? 'pulse-ci-result' : undefined} data-ci-status={runView.ciStatus}>CI {runView.ciStatus.toUpperCase()}</span>}
+        {playback.playing && (runStatus === 'succeeded' || runStatus === 'failed') && <small>
+          {playback.paused ? 'Визуализация на паузе' : 'Воспроизводится визуализация'}
+        </small>}
+        {criticalFinding && <a href={runsUrl(workflow.id, accepted.id)}>Находка {criticalFinding}</a>}
+        <PlaybackControls playback={playback} speed={speed} onSpeed={setSpeed} />
       </section>}
       {loading && <p className="garden-notice" role="status">Загрузка сценария…</p>}
       {!loading && !workflow && <button className="garden-retry" onClick={() => { setLoading(true); setNotice(undefined); setLoadAttempt(attempt => attempt + 1) }}>Повторить</button>}
       {demoOpen && <PresentationMode stage={demoStage} setStage={stage => {
         setDemoStage(stage)
         setDemoCompareRun(undefined)
-        if (stage === 0) demo.restart()
-      }} onClose={closeDemo} run={demo.run} view={demo.view} error={demo.error} paused={demo.paused}
-        onPause={() => demo.setPaused(value => !value)} onReplay={demo.restart} onFocus={focusEvidence}
+        if (stage === 0) playback.restart()
+      }} onClose={closeDemo} run={demo.run} error={demo.error} playback={playback} speed={speed} onSpeed={setSpeed}
+        activeLabel={activeLabel && labels[activeLabel][0]} onFocus={focusEvidence}
         onCompare={setDemoCompareRun} />}
       {workflow && <div className="garden-workspace" data-inspector-collapsed={inspectorCollapsed} data-explain-open={!demoOpen && Boolean(explanationRun)}>
         <aside className="garden-panel garden-palette" aria-label="Палитра">

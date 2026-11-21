@@ -1,7 +1,9 @@
 import { useEffect } from 'react'
 import type { Run } from '../runs/types'
 import { StatusBadge } from '../ui/StatusBadge'
-import type { RunView } from '../runs/useRun'
+import type { Playback } from './usePlayback'
+import type { PlaybackSpeed } from './playback'
+import { PlaybackControls } from './PlaybackControls'
 import { FixDialog } from '../runs/FixDialog'
 import { ExplainableCI } from './ExplainableCI'
 import { TimeMachine } from './TimeMachine'
@@ -13,9 +15,9 @@ const titles = [
   'Проверка пройдена',
 ]
 
-export function PresentationMode({ stage, setStage, onClose, run, error, paused, onPause, onReplay, onFocus, onCompare, view }: {
+export function PresentationMode({ stage, setStage, onClose, run, error, playback, speed, onSpeed, activeLabel, onFocus, onCompare }: {
   stage: number; setStage: (stage: number) => void; onClose: () => void
-  run?: Run; view?: RunView; error: string; paused: boolean; onPause: () => void; onReplay: () => void
+  run?: Run; error: string; playback: Playback; speed: PlaybackSpeed; onSpeed: (speed: PlaybackSpeed) => void; activeLabel?: string
   onFocus: (id: string) => void; onCompare: (run: Run) => void
 }) {
   useEffect(() => {
@@ -44,14 +46,17 @@ export function PresentationMode({ stage, setStage, onClose, run, error, paused,
     <div className="replay-controls">
       <button disabled={stage === 0} onClick={() => setStage(stage - 1)}>Назад</button>
       <button disabled={stage === 3} onClick={() => setStage(stage + 1)}>Далее</button>
-      {stage === 0 && <>
-        <button disabled={!run} onClick={onReplay}>Повторить</button>
-        <button disabled={!run} onClick={onPause}>{paused ? 'Воспроизвести' : 'Пауза'}</button>
-      </>}
     </div>
-    {run && stage === 0 && <div><p>Запись событий {run.id}. Темп воспроизведения отличается от времени выполнения.</p>
-      {view && <div className="replay-controls"><StatusBadge kind="run" status={view.status} />
-        {view.ciStatus && <StatusBadge kind="ci" status={view.ciStatus} />}</div>}</div>}
+    {stage === 0 && <PlaybackControls playback={playback} speed={speed} onSpeed={onSpeed} />}
+    {run && stage === 0 && <div>
+      <p>Запись событий {run.id}</p>
+      <div className="replay-controls"><StatusBadge kind="run" status={run.status} />
+        <StatusBadge kind="ci" status={run.ci.status} /></div>
+      {activeLabel && <p>На графе · <strong>{activeLabel}</strong></p>}
+      {playback.view?.ciStatus && <p className="pulse-ci-result" data-ci-status={playback.view.ciStatus}>
+        CI {playback.view.ciStatus.toUpperCase()}
+      </p>}
+    </div>}
     {run && stage === 1 && <ExplainableCI key={run.id} run={run} onFocus={onFocus} />}
     {run && stage === 2 && (finding
       ? <FixDialog run={run} findingId={finding.id} />

@@ -9,17 +9,10 @@ export function branchOf(output: unknown): 'yes' | 'no' | undefined {
   if (output.branch === 'yes' || output.branch === 'no') return output.branch
 }
 
-export function pulseFor(edge: Edge, view?: RunView) {
+export function branchChoice(edge: Edge, view?: RunView) {
   const source = view?.nodes[edge.from]
   const branch = source?.branch ?? branchOf(source?.output)
-  const choice = edge.branch !== 'next' && branch
-    ? edge.branch === branch ? 'taken' : 'alternate'
-    : undefined
-  const event = view?.lastNodeEvent
-  const pulse = view?.status === 'running' && event?.id === edge.from && choice === 'taken' && branchOf(event.output) === branch
-    ? event.seq
-    : undefined
-  return { choice, pulse }
+  if (edge.branch !== 'next' && branch) return edge.branch === branch ? 'taken' : 'alternate'
 }
 
 export function ciSummary(run: Run) {

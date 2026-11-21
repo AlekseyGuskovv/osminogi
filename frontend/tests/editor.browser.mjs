@@ -28,7 +28,7 @@ async function until(action) {
   throw new Error('Browser or Vite did not become ready')
 }
 
-async function evaluate(port, test, path = "/") {
+async function evaluate(port, test, path = "/", reducedMotion = false) {
   const url = 'http://127.0.0.1:' + port + path
   const response = await fetch('http://127.0.0.1:' + debug + '/json/new?' + encodeURIComponent(url), { method: 'PUT' })
   if (!response.ok) throw new Error(await response.text())
@@ -59,6 +59,9 @@ async function evaluate(port, test, path = "/") {
     await until(async () => {
       const result = await call('Runtime.evaluate', { expression: '!!document.querySelector("#root")?.children.length', returnByValue: true })
       return result.result.value
+    })
+    if (reducedMotion) await call('Emulation.setEmulatedMedia', {
+      features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
     })
     await call('Runtime.enable', {})
     let syntheticTokenLogged = false
@@ -206,10 +209,12 @@ try {
 
     await waitFor(() => document.querySelector('[data-run-status="succeeded"]'))
     assert(document.querySelector('[data-ci-status="failed"]'), 'Native SSE separates completed run from red CI')
-    assert(document.querySelector('[data-id="secret"] [data-node-status="succeeded"]'), 'Secret status updated on the graph')
+    assert(document.querySelector('.garden-run-accepted').textContent.includes('Воспроизводится визуализация'),
+      'Actual CI is available before visual playback finishes')
+    await waitFor(() => document.querySelector('[data-id="secret"] [data-node-status="succeeded"]'))
     document.querySelector('[data-id="secret"] .garden-node').click()
     await waitFor(() => settings.querySelector('pre')?.textContent.includes('F-key'))
-    assert(document.querySelector('[data-id="gate"] [data-node-status="succeeded"]'), 'Other nodes retain their status')
+    await waitFor(() => document.querySelector('[data-id="gate"] [data-node-status="succeeded"]'))
     const { postJson } = await import('/src/api.ts')
     const addAndSelect = () => palette.querySelector('[data-block-type=secrets]').click()
     addAndSelect()
@@ -813,12 +818,37 @@ try {
       const panel = await until(() => document.querySelector('.replay-presentation'))
       if (!panel.textContent.includes('Демо · тестовые данные')) throw new Error('Demo label missing')
       await until(() => !find(panel, 'Пауза')?.disabled)
+      const controls = panel.querySelector('select')
+      const setSpeed = speed => {
+        controls.value = String(speed)
+        controls.dispatchEvent(new Event('change', { bubbles: true }))
+      }
+      const surface = canvas.closest('.garden-canvas')
+      const offset = () => Number(surface.style.getPropertyValue('--pulse-offset'))
+      await until(() => canvas.querySelector('[data-pulse="active"] .pulse-halo'))
+      await until(() => canvas.querySelector('.pulse-edge-core') && offset() < 4 && offset() > -35)
+      setSpeed(0.5)
+      await new Promise(resolve => setTimeout(resolve, 40))
+      const slowStart = offset()
+      await new Promise(resolve => setTimeout(resolve, 110))
+      const slowDistance = slowStart - offset()
+      const beforeSwitch = offset()
+      setSpeed(2)
+      await new Promise(resolve => setTimeout(resolve, 35))
+      const fastStart = offset()
+      if (fastStart > beforeSwitch + 1) throw new Error('Speed change restarted travel')
+      await new Promise(resolve => setTimeout(resolve, 110))
+      const fastDistance = fastStart - offset()
+      if (!(slowDistance > 0 && fastDistance > slowDistance * 2)) throw new Error(`Playback speeds are indistinguishable: ${slowDistance} / ${fastDistance}`)
       find(panel, 'Пауза').click()
-      await until(() => find(panel, 'Воспроизвести'))
-      find(panel, 'Воспроизвести').click()
-      await until(() => canvas.querySelector('[data-execution="running"]'))
-      await until(() => canvas.querySelector('.replay-edge-pulse'))
-      find(panel, 'Повторить').click()
+      await until(() => find(panel, 'Продолжить'))
+      const frozen = offset()
+      await new Promise(resolve => setTimeout(resolve, 120))
+      if (offset() !== frozen) throw new Error('Pause did not freeze progress')
+      find(panel, 'Продолжить').click()
+      await until(() => offset() < frozen)
+      setSpeed(1)
+      find(panel, 'Повторить анимацию').click()
       await until(() => canvas.querySelector('[data-execution="running"]'))
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
       await until(() => canvas.querySelector('.garden-ci-edge'))
@@ -844,6 +874,64 @@ try {
       window.fetch = nativeFetch
     }
   })
+
+  await evaluate(4175, async () => {
+    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+    async function until(predicate) {
+      for (let i = 0; i < 260; i++) {
+        const result = predicate()
+        if (result) return result
+        await sleep(30)
+      }
+      throw new Error('Active graph check timed out')
+    }
+    const button = (root, text) => [...root.querySelectorAll('button')].find(item => item.textContent.includes(text))
+    const canvas = await until(() => document.querySelector('.react-flow'))
+    const viewport = canvas.querySelector('.react-flow__viewport')
+    const pane = canvas.querySelector('.react-flow__pane')
+    const snapshot = await until(() => document.querySelector('.garden-snapshot-select'))
+    snapshot.value = 'pr-1'
+    snapshot.dispatchEvent(new Event('change', { bubbles: true }))
+    const run = await until(() => {
+      const launch = button(document.querySelector('.garden-actions'), 'Запустить')
+      return !launch.disabled && launch
+    })
+    run.click()
+    const controls = await until(() => document.querySelector('.garden-run-accepted .pulse-controls'))
+    const select = controls.querySelector('select')
+    select.value = '0.5'
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    const active = await until(() => canvas.querySelector('[data-pulse="active"]'))
+    button(controls, 'Пауза').click()
+    const center = active.getBoundingClientRect()
+    globalThis.dispatchDrag(JSON.stringify({ x: center.x + center.width / 2, y: center.y + center.height / 2 }))
+    await until(() => globalThis.dragComplete && Math.abs(active.getBoundingClientRect().x - center.x) > 10)
+    if (getComputedStyle(active.querySelector('.pulse-halo')).pointerEvents !== 'none') throw new Error('Halo intercepts pointer events')
+    const matrix = () => new DOMMatrix(getComputedStyle(viewport).transform)
+    for (const scale of [0.5, 1, 1.5]) {
+      const rect = pane.getBoundingClientRect()
+      pane.dispatchEvent(new WheelEvent('wheel', {
+        deltaY: -Math.log2(scale / matrix().a) / 0.002,
+        clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2,
+        bubbles: true, cancelable: true,
+      }))
+      await until(() => Math.abs(matrix().a - scale) < 0.015)
+      if (!active.isConnected || !active.querySelector('.pulse-halo')) throw new Error('Zoom removed the active halo')
+    }
+    const rect = pane.getBoundingClientRect()
+    const initialPan = matrix().e
+    globalThis.dragComplete = false
+    globalThis.dispatchDrag(JSON.stringify({ x: rect.left + 25, y: rect.top + 25 }))
+    await until(() => globalThis.dragComplete && Math.abs(matrix().e - initialPan) > 10)
+    await until(() => document.querySelector('.garden-run-accepted [data-ci-status="failed"]'))
+    if (!active.isConnected || !canvas.isConnected) throw new Error('Interaction remounted the active graph')
+    button(controls, 'Продолжить').click()
+    const core = await until(() => canvas.querySelector('.pulse-edge-core'))
+    if (getComputedStyle(core).display !== 'none' || !canvas.querySelector('.pulse-edge-guide')) {
+      throw new Error('Reduced motion should leave only the static edge guide')
+    }
+    return 'Live Pulse: drag, pan, zoom 50/100/150%, independent final result and reduced motion'
+  }, '/?workflow=wf-1', true)
 
   await evaluate(4176, async () => {
     const { installMocks } = await import('/src/mocks/worker.ts')
