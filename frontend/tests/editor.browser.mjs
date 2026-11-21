@@ -316,7 +316,22 @@ try {
     if (!comparison('[data-comparison-group="existing"] [data-finding-id="F-dep"]')) {
       throw new Error('Existing finding lost')
     }
-    return 'Comparison: PR baseline and run-2 against run-1 display the correct categories'
+    const { getJson } = await import('/src/api.ts')
+    const before = await Promise.all([getJson('/workflows/wf-1'), getJson('/workflows/wf-1/runs')])
+    const threshold = comparison('.garden-preview select')
+    threshold.value = 'high'
+    threshold.dispatchEvent(new Event('change', { bubbles: true }))
+    await new Promise(resolve => requestAnimationFrame(resolve))
+    comparison('.garden-preview button').click()
+    await waitFor(() => comparison('[data-preview-branch="yes"]')?.textContent.includes('Будет отправлено'))
+    const after = await Promise.all([getJson('/workflows/wf-1'), getJson('/workflows/wf-1/runs')])
+    if (JSON.stringify(before) !== JSON.stringify(after)) throw new Error('Preview changed the workflow or run history')
+    threshold.value = 'critical'
+    threshold.dispatchEvent(new Event('change', { bubbles: true }))
+    await new Promise(resolve => requestAnimationFrame(resolve))
+    comparison('.garden-preview button').click()
+    await waitFor(() => comparison('[data-preview-branch="no"]'))
+    return 'Comparison and threshold preview: categories, notifications, and unchanged workflow/history passed'
   }, '/?view=runs&workflow=wf-1&run=run-2')
 
   await evaluate(4175, async () => {

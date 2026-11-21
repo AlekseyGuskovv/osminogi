@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { getJson } from '../api'
 import { ComparisonPage } from './ComparisonPage'
 import { FindingCard } from './FindingCard'
+import { ThresholdPreview } from './ThresholdPreview'
 import type { Run } from './types'
 
 import { getHighlight } from './ci'
@@ -54,6 +55,7 @@ export function RunsPage({ workflowId, runId }: { workflowId: string; runId?: st
           {run.findings.map(finding => <FindingCard key={finding.id} finding={finding}
             recommendation={run.recommendations.find(recommendation => recommendation.findingId === finding.id)} />)}
         </div>
+        {run.ci.gateNodeId && <ThresholdPreview key={run.id} runId={run.id} nodeId={run.ci.gateNodeId} />}
         <ComparisonPage key={run.id} run={run} />
       </>}
     </section>

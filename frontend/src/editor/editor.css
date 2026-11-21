@@ -81,3 +81,6 @@
 @media (max-width: 780px) { .garden-comparison-grid { grid-template-columns: 1fr; } }
 .garden-node[data-ci-highlight] { border-color: #ffad9e; box-shadow: 0 0 0 2px #ffad9e40; }
 .garden-notice a { color: inherit; }
+.garden-preview { margin-top: 24px; }
+.garden-preview form { display: flex; align-items: end; flex-wrap: wrap; gap: 9px; }
+.garden-preview label { display: grid; gap: 5px; }

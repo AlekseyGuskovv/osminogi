@@ -7,7 +7,7 @@ import type { Run } from '../runs/types'
 import type { RunRequest } from '../runs/useRun'
 import type { RunScenario } from './fixtures'
 
-type StoredRun = { result: Run; at: string; readyAt: number; analyzers: string }
+type StoredRun = { result: Run; at: string; readyAt: number; analyzers: string; workflow?: Workflow }
 
 const workflowStorageKey = 'cyber-garden.mock.workflows.v2'
 
@@ -152,7 +152,7 @@ function storeRun(
   const analyzers = [...new Set(workflow.nodes
     .map(node => node.type)
     .filter(type => type === 'secrets' || type === 'sca' || type === 'sast'))].sort().join(',')
-  runs.set(id, { result: makeRun(id, workflow, request, scenario), at, readyAt, analyzers })
+  runs.set(id, { result: makeRun(id, workflow, request, scenario), at, readyAt, analyzers, workflow })
 }
 
 storeRun('run-existing', initialWorkflow, { trigger: 'ci', baseSnapshotId: 'main-critical', snapshotId: 'pr-1' }, '2026-11-20T09:00:00Z', 0)
@@ -298,6 +298,35 @@ export const handlers = [
       return error(409, 'INCOMPARABLE_RUNS', 'Запуски нельзя сравнить по результатам анализа.')
     }
     return HttpResponse.json({ againstRunId, ...compareFindings(current.findings, baseline.findings) })
+  }),
+  http.post(api('/runs/:runId/threshold-preview'), async ({ params, request }) => {
+    const run = runs.get(String(params.runId))
+    if (!run) return notFound('Запуск не найден.')
+    const body = await readBody(request)
+    const workflow = run.workflow ?? workflows.get(run.result.workflowId)
+    const { nodeId, value } = body ?? {}
+    const severity = ['low', 'medium', 'high', 'critical']
+    if (typeof nodeId !== 'string' || !workflow?.nodes.some(node => node.id === nodeId && node.type === 'condition')) {
+      return notFound('Условие не найдено.')
+    }
+    const threshold = typeof value === 'string' ? severity.indexOf(value) : -1
+    if (threshold === -1 || runResponse(run).status !== 'succeeded') {
+      return error(422, 'INVALID_GRAPH', 'Предпросмотр требует завершённого анализа и допустимого порога.')
+    }
+    const branch = run.result.findings.some(finding => severity.indexOf(finding.severity) >= threshold) ? 'yes' : 'no'
+    let next = workflow.edges.find(edge => edge.from === nodeId && edge.branch === branch)?.to
+    const visited = new Set<string>()
+    let wouldNotify = false
+    while (next && !visited.has(next)) {
+      visited.add(next)
+      const node = workflow.nodes.find(item => item.id === next)
+      if (node?.type === 'telegram' && node.settings.channelId) {
+        wouldNotify = true
+        break
+      }
+      next = workflow.edges.find(edge => edge.from === next && edge.branch === 'next')?.to
+    }
+    return HttpResponse.json({ nodeId, value, branch, wouldNotify })
   }),
   http.get(api('/runs/:runId/events'), ({ params, request }) => {
     const run = runs.get(String(params.runId))
