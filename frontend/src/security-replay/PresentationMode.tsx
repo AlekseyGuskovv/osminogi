@@ -18,7 +18,7 @@ const titles = [
 export function PresentationMode({ stage, setStage, onClose, run, error, playback, speed, onSpeed, activeLabel, onFocus, onCompare }: {
   stage: number; setStage: (stage: number) => void; onClose: () => void
   run?: Run; error: string; playback: Playback; speed: PlaybackSpeed; onSpeed: (speed: PlaybackSpeed) => void; activeLabel?: string
-  onFocus: (id: string) => void; onCompare: (run: Run) => void
+  onFocus: (id: string) => void; onCompare: (run: Run | undefined) => void
 }) {
   useEffect(() => {
     function key(event: KeyboardEvent) {
@@ -63,7 +63,6 @@ export function PresentationMode({ stage, setStage, onClose, run, error, playbac
       : <p>Для этого запуска нет связанной находки для предпросмотра.</p>)}
     {run && stage === 3 && <>
       <TimeMachine workflowId={run.workflowId} initialId={run.id} demo onFocus={onCompare} />
-      <p>Cyber Garden помогает обнаружить угрозу, объяснить её, проверить исправление и подтвердить результат повторным анализом.</p>
     </>}
   </section>
 }

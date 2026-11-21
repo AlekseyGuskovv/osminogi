@@ -83,6 +83,13 @@ export function RunsPage({ workflowId, runId, openTimeMachine }: { workflowId: s
         <a className="garden-subtle-action" href={`?workflow=${encodeURIComponent(workflowId)}`}>Открыть конструктор</a>
       </section>}
       {run && <>
+        <div className="replay-controls">
+          <button aria-expanded={timeMachine} onClick={() => setTimeMachine(value => !value)}>Машина времени безопасности</button>
+          {run.ci.status !== 'pending' && <button aria-expanded={explanation} onClick={() => setExplanation(value => !value)}>
+            {run.ci.status === 'failed' ? 'Почему CI не пройден?' : 'Объяснение CI'}
+          </button>}
+        </div>
+        {timeMachine && <TimeMachine key={run.id} workflowId={run.workflowId} initialId={run.id} />}
         <div className="garden-run-summary" data-detail-ci={run.ci.status}>
           <div className="garden-run-summary-badges"><span>Выполнение сценария</span><StatusBadge kind="run" status={run.status} />
             <span>Проверка безопасности (CI)</span><StatusBadge kind="ci" status={run.ci.status} /></div>
@@ -109,17 +116,10 @@ export function RunsPage({ workflowId, runId, openTimeMachine }: { workflowId: s
           <StatusBadge kind="run" status={live.status} />
           <ul>{Object.entries(live.nodes).map(([id, node]) => <li key={id}><code>{id}</code> · {node.status}</li>)}</ul>
         </section>}
-        <div className="replay-controls">
-          <button aria-expanded={timeMachine} onClick={() => setTimeMachine(value => !value)}>Машина времени безопасности</button>
-          {run.ci.status !== 'pending' && <button aria-expanded={explanation} onClick={() => setExplanation(value => !value)}>
-            {run.ci.status === 'failed' ? 'Почему CI не пройден?' : 'Объяснение CI'}
-          </button>}
-        </div>
         {explanation && <ExplainableCI key={run.id} run={run} onClose={() => setExplanation(false)} />}
         {explanation && <a href={`?${new URLSearchParams({ workflow: run.workflowId, ciRun: run.id, explain: '1' })}`}>
           Открыть объяснение на графе
         </a>}
-        {timeMachine && <TimeMachine key={run.id} workflowId={run.workflowId} initialId={run.id} />}
         <ComparisonPage key={run.id} run={run} />
       </>}
     </section>

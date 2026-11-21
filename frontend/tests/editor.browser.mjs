@@ -883,8 +883,10 @@ try {
       const compare = panel.querySelector('[aria-label="Машина времени безопасности"]')
       find(compare, 'До').click()
       await until(() => compare.querySelector('[data-replay-phase="before"] [data-finding-id="F-key"]'))
+      await until(() => canvas.querySelector('[data-id="gate:yes"].garden-ci-edge'))
       find(compare, 'После').click()
       await until(() => compare.querySelector('[data-replay-phase="after"] .replay-resolved [data-finding-id="F-key"]'))
+      await until(() => canvas.querySelector('[data-id="gate:no"].garden-ci-edge'))
       find(panel, 'Назад').click()
       await until(() => panel.textContent.includes('Исправляем уязвимость'))
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
@@ -1021,6 +1023,94 @@ try {
     if (colors.size !== 5) throw new Error('Scanner did not inherit the existing accents')
     return 'Scanner Sweep: all eight node types, all five accents, queued/skipped and succeeded/failed'
   }, '/?workflow=wf-1')
+
+  await evaluate(4175, async () => {
+    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+    async function until(predicate) {
+      for (let i = 0; i < 160; i++) {
+        const value = predicate()
+        if (value) return value
+        await sleep(25)
+      }
+      throw new Error('Time Machine did not reach the expected state')
+    }
+    const root = await until(() => document.querySelector('.evolution'))
+    const track = await until(() => root.querySelector('.evolution-track'))
+    const press = phase => [...track.querySelectorAll('button')].find(button => button.textContent === phase).click()
+    const card = id => root.querySelector(`[data-evolution-card="${id}"]`)
+    const link = () => new URL(root.querySelector('.evolution-workflow a').href)
+    const outcome = root.querySelector('.evolution-outcome')
+    const nativeFetch = window.fetch
+    const requests = []
+    window.fetch = (input, init) => {
+      requests.push({ path: String(input), method: init?.method ?? 'GET' })
+      return nativeFetch(input, init)
+    }
+    try {
+      if (![...track.querySelectorAll('[data-ci]')].map(element => element.dataset.ci).join(',').includes('failed,passed')) {
+        throw new Error('Expected historical CI failed and passed')
+      }
+      const metrics = [...root.querySelectorAll('.evolution-metrics dd')].map(element => element.textContent)
+      if (metrics.join(',') !== '2 → 1,1 → 0,1,1') throw new Error('Incorrect comparison metrics: ' + metrics)
+      const key = card('F-key')
+      const dependency = card('F-dep')
+      if (!key.querySelector('[data-finding-variant="resolved"]') || key.querySelector('[data-severity]') ||
+        !dependency.querySelector('[data-severity="high"]') || link().searchParams.get('ciRun') !== 'run-2') {
+        throw new Error('Resolved and active cards or graph link are incorrect')
+      }
+      for (let i = 0; i < 4; i++) {
+        press('До')
+        await until(() => outcome.dataset.ci === 'failed')
+        if (card('F-key') !== key || !key.querySelector('[data-severity="critical"]') ||
+          link().searchParams.get('ciRun') !== 'run-1') throw new Error('Before lost the shared card or graph link')
+        press('После')
+        await until(() => outcome.dataset.ci === 'passed')
+      }
+      if (requests.length || card('F-dep') !== dependency || card('F-key') !== key) {
+        throw new Error('Phase switching fetched data or recreated a shared finding')
+      }
+
+      const [before, after] = root.querySelectorAll('select')
+      const choose = (select, id) => {
+        select.value = id
+        select.dispatchEvent(new Event('change', { bubbles: true }))
+      }
+      choose(before, 'run-2')
+      await until(() => root.querySelector('[role="alert"]')?.textContent.includes('разные'))
+      if (root.querySelector('.evolution-track')) throw new Error('Duplicate pair retained stale results')
+      let release
+      window.fetch = (input, init) => {
+        if (String(input).includes('/run-2/comparison?againstRunId=run-1')) return new Promise(resolve => {
+          release = () => resolve(nativeFetch(input, init))
+        })
+        if (String(input).includes('/run-1/comparison?againstRunId=run-2')) return Promise.resolve(new Response(
+          JSON.stringify({ code: 'INCOMPARABLE_RUNS', message: 'Incompatible runs' }),
+          { status: 409, headers: { 'Content-Type': 'application/json' } },
+        ))
+        return nativeFetch(input, init)
+      }
+      choose(before, 'run-1')
+      await until(() => release)
+      if (root.querySelector('.evolution-track')) throw new Error('Loading reused stale comparison')
+      choose(after, 'run-1')
+      await until(() => root.querySelector('[role="alert"]')?.textContent.includes('разные'))
+      choose(before, 'run-2')
+      await until(() => root.querySelector('[role="alert"]')?.textContent.includes('нельзя сравнить'))
+      release()
+      await sleep(180)
+      if (root.querySelector('.evolution-track') || !root.querySelector('[role="alert"]')?.textContent.includes('нельзя сравнить')) {
+        throw new Error('Late response replaced the current error')
+      }
+      window.fetch = nativeFetch
+      choose(before, 'run-1')
+      await until(() => root.querySelector('[role="alert"]')?.textContent.includes('разные'))
+      choose(after, 'run-2')
+      await until(() => root.querySelector('.evolution-outcome[data-ci="passed"]'))
+      return 'Time Machine: metrics, shared findings, rapid switching, graph links, duplicate pair, 409 and stale responses'
+    } finally {
+      window.fetch = nativeFetch
+    }
+  }, '/?view=runs&workflow=wf-1&run=run-2&replay=1')
 
   await evaluate(4176, async () => {
     const { installMocks } = await import('/src/mocks/worker.ts')

@@ -224,7 +224,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
   const criticalFinding = factCi?.reason === 'CRITICAL_FOUND' ? factCi.findingId : undefined
   const activeLabel = workflow?.nodes.find(node => node.id === (playback.edge?.from ?? pulseNode))?.type
   const explanationRun = demoOpen && demoStage === 1 ? demo.run : explanationOpen ? ciRun : undefined
-  const highlightRun = demoOpen ? demoStage === 3 ? demoCompareRun ?? demo.run : explanationRun : ciRun
+  const highlightRun = demoOpen ? demoStage === 3 ? demoCompareRun : explanationRun : ciRun
   const [notice, setNotice] = useState<{ text: string; error?: boolean }>()
   const dirty = workflow && (!workflow.id || JSON.stringify({ ...workflow, snapshotId: snapshotId || undefined }) !== JSON.stringify(savedWorkflow))
   const hasStart = workflow?.nodes.some(node => node.type === 'start')
