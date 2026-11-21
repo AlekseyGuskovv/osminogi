@@ -48,3 +48,4 @@
 .garden-settings input:not([type='checkbox']), .garden-settings select {
   width: 100%; min-width: 0; border: 1px solid #35463d; border-radius: 6px; padding: 6px; color: #edf4ef; background: #1a241f;
 }
+.garden-actions a { align-self: center; color: #a9e9c6; font-size: 13px; }

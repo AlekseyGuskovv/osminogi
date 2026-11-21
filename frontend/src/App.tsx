@@ -1,5 +1,6 @@
 import { WorkflowEditor } from './editor/WorkflowEditor'
 
 export default function App() {
-  return <WorkflowEditor workflowId="wf-1" />
+  const id = new URLSearchParams(window.location.search).get('workflow')
+  return <WorkflowEditor workflowId={id === 'new' ? undefined : id ?? 'wf-1'} />
 }

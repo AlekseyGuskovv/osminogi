@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { getJson, postJson } from '../api'
 import { nodeTypes } from '../workflow'
 import type { NodeType, Workflow } from '../workflow'
+import { newWorkflow, saveDraft } from './useWorkflow'
+import type { EditableWorkflow } from './useWorkflow'
 import { NodeSettings } from './NodeSettings'
 import { addNode, connect, removeNode } from './graph'
 import '@xyflow/react/dist/style.css'
@@ -22,7 +24,7 @@ const labels: Record<NodeType, [string, string]> = {
 
 type Block = Node<{ kind: NodeType }, 'workflow'>
 type Snapshot = { id: string; label: string }
-export type EditorProps = { workflowId: string }
+export type EditorProps = { workflowId?: string }
 
 function WorkflowBlock({ data, selected }: NodeProps<Block>) {
   const { kind } = data
@@ -43,7 +45,7 @@ function WorkflowBlock({ data, selected }: NodeProps<Block>) {
 const flowNodeTypes = { workflow: WorkflowBlock }
 
 export function WorkflowEditor({ workflowId }: EditorProps) {
-  const [workflow, setWorkflow] = useState<Workflow>()
+  const [workflow, setWorkflow] = useState<EditableWorkflow>()
   const [snapshots, setSnapshots] = useState<Snapshot[]>([])
   const [snapshotId, setSnapshotId] = useState('')
   const [selectedId, setSelectedId] = useState('')
@@ -56,7 +58,7 @@ export function WorkflowEditor({ workflowId }: EditorProps) {
   useEffect(() => {
     let active = true
     void Promise.all([
-      getJson<Workflow>(`/workflows/${encodeURIComponent(workflowId)}`),
+      workflowId ? getJson<Workflow>(`/workflows/${encodeURIComponent(workflowId)}`) : Promise.resolve(newWorkflow()),
       getJson<Snapshot[]>('/snapshots'),
     ]).then(([loaded, choices]) => {
       if (!active) return
@@ -98,13 +100,18 @@ export function WorkflowEditor({ workflowId }: EditorProps) {
     if (!workflow || pending) return
     setPending(true)
     setNotice(undefined)
-    const path = `/workflows/${encodeURIComponent(workflow.id)}`
     try {
       if (action === 'save') {
-        const saved = await postJson<Workflow>(`${path}/save`, { ...workflow, snapshotId: snapshotId || undefined })
+        const saved = await saveDraft({ ...workflow, snapshotId: snapshotId || undefined })
+        if (!workflow.id) {
+          const url = new URL(window.location.href)
+          url.searchParams.set('workflow', saved.id)
+          window.history.replaceState(null, '', url)
+        }
         setWorkflow(saved)
         setNotice({ text: `Сохранено · ревизия ${saved.revision}` })
-      } else {
+      } else if (workflow.id) {
+        const path = `/workflows/${encodeURIComponent(workflow.id)}`
         const run = await postJson<{ id: string; status: 'queued' }>(`${path}/runs`, { trigger: 'manual', snapshotId })
         setNotice({ text: `${run.id} поставлен в очередь` })
       }
@@ -131,15 +138,16 @@ export function WorkflowEditor({ workflowId }: EditorProps) {
       <header className="garden-top"><span className="garden-brand"><b aria-hidden="true">✳</b> Cyber Garden</span><span>Редактор сценариев</span></header>
       <section className="garden-heading">
         <div><p className="garden-kicker">Сценарии</p><h1>{workflow?.name ?? 'Редактор Workflow'}</h1>
-          {workflow && <p className="garden-meta">{workflow.id} · Ревизия {workflow.revision}</p>}
+          {workflow && <p className="garden-meta">{workflow.id ? `${workflow.id} · Ревизия ${workflow.revision}` : 'Черновик'}</p>}
         </div>
         {workflow && <div className="garden-actions">
+          <a href="?workflow=new">Новый сценарий</a>
           <label>Снимок<select value={snapshotId} disabled={pending} onChange={event => setSnapshotId(event.target.value)}>
             <option value="">Выберите снимок</option>
             {snapshots.map(snapshot => <option key={snapshot.id} value={snapshot.id}>{snapshot.label}</option>)}
           </select></label>
           <button disabled={pending} onClick={() => void submit('save')}>Сохранить</button>
-          <button className="garden-primary" disabled={pending || !snapshotId} onClick={() => void submit('run')}>▷ Запустить</button>
+          <button className="garden-primary" disabled={pending || !workflow.id || !snapshotId} onClick={() => void submit('run')}>▷ Запустить</button>
         </div>}
       </section>
       {notice && <p className={`garden-notice ${notice.error ? 'error' : ''}`} role={notice.error ? 'alert' : 'status'}>{notice.text}</p>}

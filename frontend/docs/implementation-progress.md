@@ -9,6 +9,7 @@
 | 5 | Add Node | `feat/5-add-node` | `7a47f8f` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Уникальные ID и независимые настройки. |
 | 6 | Connect Nodes | `feat/6-connect-nodes` | `c0dc011` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Независимые ветки и защита от циклов. |
 | 7 | Remove Node | `feat/7-remove-node` | `e7f7cab` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Удаление блока и всех его связей. |
-| 8 | Node Settings | `feat/8-node-settings` | HEAD ветки | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Готово к публикации | Формы расписания, условия и канала. |
+| 8 | Node Settings | `feat/8-node-settings` | `ca229dc` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Формы расписания, условия и канала. |
+| 9 | Workflow Saving | `feat/9-workflow-save` | HEAD ветки | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Готово к публикации | Создание, конфликт ревизии и восстановление после перезагрузки. |
 
-Следующая задача — Task 9, сохранение сценариев.
+Следующая задача — Task 10, запуск сценария.

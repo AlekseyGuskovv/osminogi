@@ -28,8 +28,8 @@ async function until(action) {
   throw new Error('Browser or Vite did not become ready')
 }
 
-async function evaluate(port, test) {
-  const url = 'http://127.0.0.1:' + port
+async function evaluate(port, test, path = "/") {
+  const url = 'http://127.0.0.1:' + port + path
   const response = await fetch('http://127.0.0.1:' + debug + '/json/new?' + encodeURIComponent(url), { method: 'PUT' })
   if (!response.ok) throw new Error(await response.text())
   const target = await response.json()
@@ -90,7 +90,7 @@ try {
     start(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], { ...process.env, VITE_USE_MOCKS: enabled, VITE_API_BASE: '/api/v1/' })
     await until(async () => (await fetch('http://127.0.0.1:' + port + '/')).ok)
   }
-  start(chrome, ['--headless', '--no-first-run', '--no-default-browser-check', '--disable-background-networking', '--disable-component-update', '--disable-sync', '--remote-debugging-port=0', '--user-data-dir=' + join(root, 'chrome-v2'), 'about:blank'])
+  start(chrome, ['--headless', '--window-size=1440,1000', '--no-first-run', '--no-default-browser-check', '--disable-background-networking', '--disable-component-update', '--disable-sync', '--remote-debugging-port=0', '--user-data-dir=' + join(root, 'chrome-v2'), 'about:blank'])
   debug = await until(async () => (await readFile(join(root, 'chrome-v2', 'DevToolsActivePort'), 'utf8')).split('\n')[0])
 
   await evaluate(4175, async () => {
@@ -102,7 +102,7 @@ try {
         if (condition()) return
         await new Promise(resolve => setTimeout(resolve, 50))
       }
-      throw new Error('Editor did not reach the expected state')
+      throw new Error('Editor did not reach the expected state: ' + document.querySelector('.garden-notice')?.textContent)
     }
 
     await waitFor(() => document.querySelectorAll('.react-flow__node').length === 8)
@@ -130,6 +130,7 @@ try {
     const rect = condition.getBoundingClientRect()
     const x = rect.left + rect.width / 2
     const y = rect.top + rect.height / 2
+    assert(condition.contains(document.elementFromPoint(x, y)), 'Drag starts on visible node')
     globalThis.dispatchDrag(JSON.stringify({ x, y }))
     await waitFor(() => Math.abs(condition.getBoundingClientRect().left - rect.left) > 5)
     assert(canvas.contains(condition), 'Dragged condition still on canvas')
@@ -152,14 +153,31 @@ try {
     buttons.find(button => button.textContent.includes('Запустить')).click()
     await waitFor(() => document.querySelector('[role="status"]')?.textContent.includes('в очередь'))
 
-    palette.querySelectorAll('button')[1].click()
-    await waitFor(() => document.querySelectorAll('.react-flow__node').length === 9)
+    const { postJson } = await import('/src/api.ts')
+    const addAndSelect = () => palette.querySelectorAll('button')[1].click()
+    addAndSelect()
+    await waitFor(() => document.querySelector('[data-id="secrets-1"] .source'))
+    document.querySelector('[data-id="start"] .source').click()
+    document.querySelector('[data-id="secrets-1"] .target').click()
+    await waitFor(() => !document.querySelector('[data-id="start"] .connecting'))
+    document.querySelector('[data-id="secrets-1"] .source').click()
+    document.querySelector('[data-id="secret"] .target').click()
+    await waitFor(() => document.querySelector('[data-testid="rf__edge-secrets-1:next"]'))
     buttons.find(button => button.textContent === 'Сохранить').click()
-    await waitFor(() => document.querySelector('[role="alert"]')?.textContent.includes('графа'))
-    assert(document.querySelectorAll('.react-flow__node').length === 9, 'Rejected save retains changes')
+    await waitFor(() => document.querySelector('[role="status"]')?.textContent.includes('ревизия 3'))
+    const committed = await getJson('/workflows/wf-1')
+    assert(committed.edges.some(edge => edge.from === 'start' && edge.to === 'secrets-1'), 'Added node connected before save')
+    assert(committed.edges.some(edge => edge.from === 'secrets-1' && edge.to === 'secret'), 'Added node output saved')
+    await postJson('/workflows/wf-1/save', { ...committed, name: 'Изменено параллельно' })
+
     palette.querySelectorAll('button')[1].click()
     await waitFor(() => document.querySelectorAll('.react-flow__node').length === 10)
-    assert(document.querySelector('[data-id="secrets-1"]') && document.querySelector('[data-id="secrets-2"]'), 'Duplicate block types receive distinct IDs')
+    buttons.find(button => button.textContent === 'Сохранить').click()
+    await waitFor(() => document.querySelector('[role="alert"]')?.textContent.includes('актуальную ревизию'))
+    assert(document.querySelectorAll('.react-flow__node').length === 10, 'Rejected save retains changes')
+    palette.querySelectorAll('button')[1].click()
+    await waitFor(() => document.querySelectorAll('.react-flow__node').length === 11)
+    assert(document.querySelector('[data-id="secrets-2"]') && document.querySelector('[data-id="secrets-3"]'), 'Duplicate block types receive distinct IDs')
     const edgePath = branch => document.querySelector(`[data-testid="rf__edge-gate:${branch}"] path.react-flow__edge-path`)?.getAttribute('d')
     const yesPath = edgePath('yes')
     const noPath = edgePath('no')
@@ -173,9 +191,37 @@ try {
     settings.querySelector('button').click()
     await waitFor(() => !document.querySelector('.react-flow__node[data-id="gate"]'))
     assert(!edgePath('yes') && !edgePath('no'), 'Deleted block has no outgoing edges')
-    assert(document.querySelectorAll('.react-flow__edge').length === 4, 'Incoming edge removed; unrelated edges preserved')
+    assert(document.querySelectorAll('.react-flow__edge').length === 5, 'Incoming edge removed; unrelated edges preserved')
     return 'Editor: graph, palette, selection, drag, branch connections, settings, deletion, API save/run and error recovery passed'
   })
+
+  await evaluate(4175, async () => {
+    const { getJson } = await import('/src/api.ts')
+    const saved = await getJson('/workflows/wf-1')
+    if (saved.revision !== 4 || !saved.nodes.some(node => node.id === 'secrets-1') ||
+      saved.nodes.some(node => node.id === 'secrets-2') ||
+      saved.nodes.find(node => node.id === 'gate')?.settings.value !== 'high') {
+      throw new Error('Stored workflow was not restored')
+    }
+    for (let attempt = 0; attempt < 80 && !document.querySelector('.react-flow__node'); attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 50))
+    }
+    if (document.querySelector('h1')?.textContent !== 'Изменено параллельно') throw new Error('Restored workflow not displayed')
+    return 'Reload: saved graph, settings and latest revision restored'
+  })
+
+  await evaluate(4175, async () => {
+    for (let attempt = 0; attempt < 80 && !document.querySelector('.garden-actions button'); attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 50))
+    }
+    document.querySelector('.garden-actions button').click()
+    for (let attempt = 0; attempt < 80; attempt++) {
+      const id = new URL(location.href).searchParams.get('workflow')
+      if (id === 'wf-2') return 'Create: submitted a draft and opened its persisted record'
+      await new Promise(resolve => setTimeout(resolve, 50))
+    }
+    throw new Error('Created workflow was not opened')
+  }, '/?workflow=new')
 
   await evaluate(4176, async () => {
     const { installMocks } = await import('/src/mocks/worker.ts')

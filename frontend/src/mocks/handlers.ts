@@ -7,7 +7,28 @@ import type { Run, RunRequest, RunScenario } from './fixtures'
 
 type StoredRun = { result: Run; at: string; readyAt: number; analyzers: string }
 
-const workflows = new Map<string, Workflow>([[initialWorkflow.id, initialWorkflow]])
+const workflowStorageKey = 'cyber-garden.mock.workflows.v2'
+
+function loadWorkflows(): Workflow[] {
+  try {
+    const cached = globalThis.localStorage?.getItem(workflowStorageKey)
+    if (cached) return JSON.parse(cached) as Workflow[]
+  } catch {
+    // A blocked or unavailable storage falls back to the initial demo data.
+  }
+  return [initialWorkflow]
+}
+
+const workflows = new Map(loadWorkflows().map(workflow => [workflow.id, workflow]))
+
+function storeWorkflow(workflow: Workflow) {
+  workflows.set(workflow.id, workflow)
+  try {
+    globalThis.localStorage?.setItem(workflowStorageKey, JSON.stringify([...workflows.values()]))
+  } catch {
+    // Keep the save available in memory if storage is blocked.
+  }
+}
 const runs = new Map<string, StoredRun>()
 let nextWorkflow = 2
 let nextRun = 4
@@ -174,8 +195,9 @@ export const handlers = [
     const draft = body && readDraft(body)
     if (!draft) return invalidGraph()
 
+    while (workflows.has(`wf-${nextWorkflow}`)) nextWorkflow++
     const workflow: Workflow = { ...draft, id: `wf-${nextWorkflow++}`, revision: 1 }
-    workflows.set(workflow.id, workflow)
+    storeWorkflow(workflow)
     return HttpResponse.json(workflow, { status: 201 })
   }),
   http.post(api('/workflows/:workflowId/save'), async ({ params, request }) => {
@@ -191,7 +213,7 @@ export const handlers = [
     if (!draft) return invalidGraph()
 
     const saved: Workflow = { ...draft, id, revision: workflow.revision + 1 }
-    workflows.set(id, saved)
+    storeWorkflow(saved)
     return HttpResponse.json(saved)
   }),
   http.post(api('/workflows/:workflowId/runs'), async ({ params, request }) => {
