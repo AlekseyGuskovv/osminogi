@@ -13,7 +13,7 @@ from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 from examples.make_zips import training_archive
 
-from .analysis.catalog_service import CatalogService
+from .analysis.catalog_service import CatalogService, parse_catalog
 from .analysis.types import Snapshot
 from .connections import deliver
 from .contract import ApiError, schedule_value, to_event, to_internal, to_workflow, zone
@@ -43,9 +43,25 @@ def project(snapshot_id):
     return Snapshot(row["id"], row["files"])
 
 
-def save_snapshot(snapshot, label):
-    STORE.put("snapshot", snapshot.id, {"id": snapshot.id, "label": label, "files": snapshot.files})
-    return {"id": snapshot.id, "label": label}
+def save_snapshot(snapshot, label, *, organizer_catalog=None):
+    row = {"id": snapshot.id, "label": label, "files": snapshot.files}
+    if organizer_catalog is not None:
+        row["organizerCatalog"] = organizer_catalog
+    STORE.put("snapshot", snapshot.id, row)
+    return snapshot_ref(row)
+
+
+def snapshot_ref(row):
+    public = {"id": row["id"], "label": row["label"]}
+    if "organizerCatalog" in row:
+        public["catalogSource"] = "organizer"
+    return public
+
+
+def snapshot_catalog(snapshot_id):
+    row = STORE.get("snapshot", snapshot_id)
+    text = row.get("organizerCatalog") if row else None
+    return parse_catalog(text, "organizer") if text is not None else CATALOG.current()
 
 
 def training_run(variant):
@@ -111,11 +127,11 @@ def launch(data, trigger="manual"):
     validated = checked_graph(data.get("graph"))
     snapshot = project(data.get("snapshotId"))
     base = project(data["baseSnapshotId"]) if data.get("baseSnapshotId") else None
-    catalog = CATALOG.current()
+    catalog = snapshot_catalog(snapshot.id)
     run = Run({"graph": data["graph"], "snapshotId": snapshot.id, "baseSnapshotId": base.id if base else None,
                "trigger": trigger, "createdAt": datetime.now(UTC).isoformat(),
                "workflowId": data.get("workflowId"), "workflowRevision": data.get("workflowRevision"),
-               "analysisVersion": catalog.version})
+               "analysisVersion": catalog.version, "catalogSource": catalog.source})
     RUNS[run.id] = run
     Thread(target=execute, args=(run, validated, snapshot, base, catalog.analyzers, PROVIDER,
                                  lambda node, report: deliver(STORE, node, report)),
@@ -253,7 +269,7 @@ class Handler(BaseHTTPRequestHandler):
         if path in collections:
             rows = STORE.list(collections[path], 30 if path == "/runs" else -1)
             if path == "/snapshots":
-                rows = [{"id": row["id"], "label": row["label"]} for row in rows]
+                rows = [snapshot_ref(row) for row in rows]
             self.reply(200, rows)
             return
         if path.startswith("/runs/"):
@@ -361,10 +377,11 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("Ожидался JSON-объект.")
             if path == "/snapshots/import-repository":
                 try:
-                    snapshot = read_organizer_project(data.get("url"), uuid4().hex)
+                    snapshot, catalog = read_organizer_project(data.get("url"), uuid4().hex)
+                    parse_catalog(catalog, "organizer")
                 except (URLError, OSError) as error:
                     raise ApiError(502, "REPOSITORY_UNAVAILABLE", "GitHub не отдал архив. Повторите позже или загрузите ZIP.") from error
-                self.reply(201, save_snapshot(snapshot, "TBagirov/training · проект организаторов"))
+                self.reply(201, save_snapshot(snapshot, "TBagirov/training · проект организаторов", organizer_catalog=catalog))
                 return
             if path == "/training/runs":
                 self.reply(202, training_run(data.get("variant")))
@@ -429,7 +446,7 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     validate_graph(to_internal(draft))
                 except (ValueError, TypeError, KeyError, re.error) as error:
-                    raise ModelError("CodexGenerator вернул недопустимый граф.") from error
+                    raise ModelError("Модель вернула недопустимый граф.") from error
                 self.reply(200, draft)
             else:
                 self.reply(404, {"message": "Маршрут не найден."})
@@ -448,7 +465,7 @@ def main():
     STORE = Store(ROOT)
     default = ROOT / "docs/training-advisories.json"
     CATALOG = CatalogService(default, Path(os.environ.get("GARDEN_ADVISORIES", default)))
-    WORD_API = WordApi(STORE, load_run, save_workflow, launch, project, condition, CATALOG)
+    WORD_API = WordApi(STORE, load_run, save_workflow, launch, project, condition, snapshot_catalog)
     for row in STORE.list("run"):
         if row["status"] in {"queued", "running"}:
             STORE.put("run", row["id"], {**row, "status": "failed", "ci": "error", "findings": [],

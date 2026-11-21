@@ -45,6 +45,8 @@ export type Run = RunRequest & {
   workflowId: string
   workflowRevision: number
   createdAt?: string
+  analysisVersion?: string
+  catalogSource?: 'training' | 'organizer' | 'custom' | 'osv'
   graph?: Pick<WorkflowDraft, 'nodes' | 'edges'>
   fixableFindingIds?: string[]
   technicalErrors?: { stage: 'ai' | 'telegram' | 'analysis' | 'comparison'; code: string; message: string; nodeId?: string }[]
@@ -55,6 +57,6 @@ export type Run = RunRequest & {
   ci: Ci
   recommendations: Recommendation[]
   delivery: Delivery
-  report: { summary: string; delivery: Delivery }
+  report: { summary: string; delivery: Delivery; messageId?: number }
   steps: Step[]
 }

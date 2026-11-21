@@ -658,7 +658,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain, r
             onImport={snapshot => setSnapshots(current => [...current.filter(item => item.id !== snapshot.id), snapshot])} />
 
       </div>}
-      <AdvisoryPanel />
+      <AdvisoryPanel organizer={snapshots.some(snapshot => snapshot.id === snapshotId && snapshot.catalogSource === 'organizer')} />
       {draftWarnings.length > 0 && <section className="garden-notice garden-draft-notice" aria-label="Предупреждения черновика">
         <ul>{draftWarnings.map(warning => <li key={warning}>{warning}</li>)}</ul>
         {missingChannel && <button type="button" onClick={() => { setSelectedId(missingChannel.id); setInspectorCollapsed(false); setInspectorOpen(true) }}>Настроить Telegram</button>}

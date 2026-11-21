@@ -18,5 +18,5 @@ def generate_report(findings, provider):
     rows = validate_recommendations(raw, keys)
     if (not isinstance(summary, str) or not 0 < len(summary.strip()) <= 500
             or REFERENCE.search(summary) or {row.findingId for row in rows} != keys):
-        raise ModelError("CodexGenerator вернул неполный отчёт или неподтверждённые ссылки.")
+        raise ModelError("Модель вернула неполный отчёт или неподтверждённые ссылки.")
     return summary.strip(), rows

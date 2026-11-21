@@ -55,7 +55,7 @@ def generate_node_template(prompt, provider):
     try:
         return validate_template(raw)
     except (ValueError, TypeError, KeyError, re.error) as error:
-        raise ModelError("CodexGenerator вернул некорректный шаблон ноды.") from error
+        raise ModelError("Модель вернула некорректный шаблон ноды.") from error
 
 
 def save_node_template(store, data):

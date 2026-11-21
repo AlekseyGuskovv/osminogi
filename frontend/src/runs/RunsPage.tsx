@@ -17,11 +17,12 @@ import { getHighlight } from './ci'
 import { runsUrl } from './navigation'
 
 const errorHelp = {
-  ai: ['Рекомендации AI', 'Проверьте доступность CodexGenerator и повторите запуск.'],
+  ai: ['Рекомендации AI', 'Проверьте доступность выбранной модели и повторите запуск.'],
   telegram: ['Доставка в Telegram', 'Проверьте подключение и права бота в чате.'],
   analysis: ['Анализ проекта', 'Проверьте снимок и настройки сценария, затем повторите запуск.'],
   comparison: ['Сравнение снимков', 'Выберите подходящий базовый снимок и повторите проверку.'],
 } as const
+const catalogLabels = { training: 'Учебный', organizer: 'Организаторы', custom: 'Серверный файл', osv: 'OSV' } as const
 
 export function RunsPage({ workflowId, runId, openTimeMachine }: { workflowId: string; runId?: string; openTimeMachine?: boolean }) {
   const [runs, setRuns] = useState<Run[]>()
@@ -136,6 +137,10 @@ export function RunsPage({ workflowId, runId, openTimeMachine }: { workflowId: s
           {run.report.summary && <p>{run.report.summary}</p>}
           <div className="garden-run-summary-meta"><span>Снимок <code>{run.snapshotId}</code></span><span>Ревизия <code>{run.workflowRevision}</code></span>
             {run.baseSnapshotId && <span>База PR <code>{run.baseSnapshotId}</code></span>}</div>
+          {run.analysisVersion && <p className="garden-meta garden-catalog-meta" title={run.analysisVersion}>
+            Справочник зависимостей · {run.catalogSource ? catalogLabels[run.catalogSource] : 'Из истории'} · <code>{run.analysisVersion}</code>
+          </p>}
+          {run.report.delivery === 'sent' && <p role="status">Отчёт доставлен в Telegram{run.report.messageId && ` · сообщение № ${run.report.messageId}`}</p>}
         </div>
         {Boolean(run.technicalErrors?.length) && <section className="garden-integration-panel garden-run-errors" aria-label="Технические ошибки">
           <h2>Технические ошибки</h2>

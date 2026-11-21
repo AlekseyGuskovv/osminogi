@@ -48,7 +48,7 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
   })
 }
 
-export type SnapshotRef = { id: string; label: string }
+export type SnapshotRef = { id: string; label: string; catalogSource?: 'organizer' }
 
 export function apiUrl(path: string) {
   const configuredBase: string | undefined = import.meta.env?.VITE_API_BASE

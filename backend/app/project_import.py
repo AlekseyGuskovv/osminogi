@@ -21,7 +21,7 @@ class ArchiveTooLarge(ValueError):
     pass
 
 
-def read_organizer_project(url, snapshot_id: str) -> Snapshot:
+def read_organizer_project(url, snapshot_id: str) -> tuple[Snapshot, str]:
     if url != ORGANIZER_REPOSITORY:
         raise ValueError("Выберите учебный репозиторий, предоставленный организаторами.")
     archive_url = f"https://codeload.github.com/TBagirov/training/zip/{ORGANIZER_COMMIT}"
@@ -29,7 +29,17 @@ def read_organizer_project(url, snapshot_id: str) -> Snapshot:
         if response.geturl() != archive_url:
             raise URLError("Unexpected archive source")
         data = response.read(MAX_UPLOAD + 1)
-    return read_project(data, snapshot_id, project_root=f"training-{ORGANIZER_COMMIT}/training-project")
+    root = f"training-{ORGANIZER_COMMIT}"
+    snapshot = read_project(data, snapshot_id, project_root=f"{root}/training-project")
+    try:
+        with ZipFile(BytesIO(data)) as archive:
+            with archive.open(f"{root}/vulnerability-database/vulnerabilities.json") as source:
+                catalog = source.read(MAX_SOURCE + 1)
+        if len(catalog) > MAX_SOURCE:
+            raise ValueError("Справочник превышает 2 МБ.")
+        return snapshot, catalog.decode("utf-8-sig")
+    except (OSError, KeyError, ValueError, BadZipFile, RuntimeError) as error:
+        raise ValueError("В архиве отсутствует корректный справочник организаторов.") from error
 
 
 def read_project(data: bytes, snapshot_id: str, *, project_root: str | None = None) -> Snapshot:

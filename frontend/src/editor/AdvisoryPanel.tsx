@@ -7,7 +7,7 @@ type Catalog = {
 }
 const path = '/advisory-catalog'
 
-export function AdvisoryPanel() {
+export function AdvisoryPanel({ organizer = false }: { organizer?: boolean }) {
   const [open, setOpen] = useState(false)
   const [catalog, setCatalog] = useState<Catalog>()
   const [busy, setBusy] = useState(false)
@@ -38,6 +38,7 @@ export function AdvisoryPanel() {
 
   return <details className="garden-integration-panel" onToggle={event => setOpen(event.currentTarget.open)}>
     <summary>Справочник зависимостей</summary>
+    {organizer && <p>Для выбранного снимка используется официальный справочник организаторов. Настройки ниже применяются к обычным ZIP.</p>}
     {catalog && <div className="garden-integration-actions">
       <label>Источник<select value={catalog.source} disabled={busy || catalog.updating}
         onChange={event => void update('source', { source: event.target.value })}>

@@ -50,7 +50,7 @@ export function NodeCatalog({ disabled, onInsert }: {
       <button className="garden-primary" type="button" disabled={busy || !prompt.trim()} onClick={() => void request(async () => {
         setDraft(undefined)
         setDraft(await postJson<Draft>('/node-templates/draft', { prompt }))
-      })}>Сгенерировать через CodexGenerator</button>
+      })}>Сгенерировать ноду</button>
       {draft && <div className="garden-integration-fields">
         <label>Название<input value={draft.name} maxLength={80} onChange={event => setDraft({ ...draft, name: event.target.value })} /></label>
         <label>Описание<textarea rows={2} maxLength={300} value={draft.description} onChange={event => setDraft({ ...draft, description: event.target.value })} /></label>

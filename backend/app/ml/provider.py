@@ -1,4 +1,5 @@
 import json
+from http.client import HTTPConnection, HTTPException
 import os
 from pathlib import Path
 import subprocess
@@ -53,5 +54,48 @@ class CodexProvider:
             raise ModelError("CodexGenerator вернул некорректный JSON.") from error
 
 
+class OllamaProvider:
+    def __init__(self, model: str, port: int):
+        self.model, self.port = model, port
+
+    def generate_json(self, system: str, payload: dict) -> dict:
+        body = json.dumps({"model": self.model, "system": system,
+                           "prompt": json.dumps(payload, ensure_ascii=False),
+                           "format": "json", "stream": False, "think": False,
+                           "options": {"temperature": 0}}).encode()
+        connection = HTTPConnection("127.0.0.1", self.port, timeout=90)
+        try:
+            connection.request("POST", "/api/generate", body, {"Content-Type": "application/json"})
+            response = connection.getresponse()
+            if response.status != 200:
+                raise ModelError("Ollama не запустила модель. Проверьте имя установленной модели.", "AI_UNAVAILABLE")
+            raw = response.read(512 * 1024 + 1)
+        except TimeoutError as error:
+            raise ModelError("Ollama не ответила вовремя.", "AI_TIMEOUT") from error
+        except (OSError, HTTPException) as error:
+            raise ModelError("Локальная Ollama недоступна.", "AI_UNAVAILABLE") from error
+        finally:
+            connection.close()
+        try:
+            if len(raw) > 512 * 1024:
+                raise ValueError("Response is too large")
+            result = json.loads(raw)
+            answer = json.loads(result["response"])
+            if result.get("done") is not True or not isinstance(answer, dict):
+                raise ValueError("Expected a completed JSON object")
+            return answer
+        except (ValueError, KeyError, TypeError) as error:
+            raise ModelError("Ollama вернула некорректный JSON.") from error
+
+
 def build_provider() -> LlmProvider:
-    return CodexProvider()
+    provider = os.environ.get("GARDEN_LLM_PROVIDER", "codex").strip().lower()
+    if provider == "codex":
+        return CodexProvider()
+    if provider == "ollama":
+        model = os.environ.get("GARDEN_OLLAMA_MODEL", "qwen3:4b").strip()
+        port = int(os.environ.get("GARDEN_OLLAMA_PORT", "11434"))
+        if not model or not 1 <= port <= 65535:
+            raise ValueError("Укажите имя локальной модели и порт Ollama.")
+        return OllamaProvider(model, port)
+    raise ValueError("GARDEN_LLM_PROVIDER должен быть codex или ollama.")
