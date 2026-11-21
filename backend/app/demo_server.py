@@ -26,6 +26,7 @@ from .store import Store
 
 
 ROOT = Path(__file__).resolve().parents[2]
+EXTERNAL_CI = ROOT / "examples/external-ci"
 PROVIDER = build_provider()
 RUNS = {}
 STORE = None
@@ -134,13 +135,23 @@ class Handler(BaseHTTPRequestHandler):
             data = {"code": {403: "ORIGIN_DENIED", 404: "NOT_FOUND", 422: "INVALID_REQUEST"}.get(status, "ERROR"), **data}
         self.send_bytes(status, json.dumps(data, ensure_ascii=False).encode(), "application/json")
 
-    def send_bytes(self, status, body, kind):
+    def send_bytes(self, status, body, kind, *, filename=None):
         self.send_response(status)
         self.send_header("Content-Type", kind + "; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("X-Content-Type-Options", "nosniff")
+        if filename:
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.end_headers()
         self.wfile.write(body)
+
+    def send_ci_workflow(self, workflow_id):
+        template = (EXTERNAL_CI / "security.yml").read_text(encoding="utf-8")
+        placeholder = "${{ vars.GARDEN_WORKFLOW_ID }}"
+        if template.count(placeholder) != 1:
+            raise ApiError(500, "CI_TEMPLATE_INVALID", "Шаблон GitHub Actions не содержит нужного поля сценария.")
+        yaml = template.replace(placeholder, json.dumps(workflow_id), 1)
+        self.send_bytes(200, yaml.encode("utf-8"), "application/yaml", filename="cyber-garden.yml")
 
     def allowed_origin(self):
         port = self.server.server_port
@@ -193,6 +204,10 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.removeprefix("/api/v1")
         if not self.path.startswith("/api/v1/"):
             self.reply(404, {"message": "Страница не найдена."})
+            return
+        if path == "/ci/client":
+            filename = "check_cyber_garden.py"
+            self.send_bytes(200, (EXTERNAL_CI / filename).read_bytes(), "text/plain", filename=filename)
             return
         if not demo and WORD_API.get(path, query, self):
             return

@@ -96,6 +96,8 @@ PATHS = {
     "/workflows": describe(operation("get", 200, array(ref("Workflow"))),
                            operation("post", 201, ref("Workflow"), ref("WorkflowDraft"))),
     "/workflows/{id}": describe(operation("get", 200, ref("Workflow"))),
+    "/workflows/{id}/github-actions": describe(operation("get", 200, STRING, content="application/yaml")),
+    "/ci/client": describe(operation("get", 200, STRING, content="text/plain")),
     "/workflows/{id}/save": describe(operation("post", 200, ref("Workflow"), ref("WorkflowUpdate"))),
     "/workflows/{id}/runs": describe(operation("get", 200, array(ref("Run"))),
                                      operation("post", 202, ref("RunAccepted"), ref("RunRequest"))),

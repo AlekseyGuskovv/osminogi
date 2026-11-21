@@ -11,6 +11,7 @@
 .hero{padding:30px 0 20px;display:flex;justify-content:space-between;align-items:end;gap:18px;flex-wrap:wrap}h1,h2,h3,p{margin:0}h1{font-size:clamp(30px,5vw,50px);line-height:1.06;letter-spacing:-.05em}h2{font-size:17px}h3{font-size:15px}p,small{color:var(--muted)}.hero p{margin-top:9px}.primary{background:#236747;color:white;border-color:#236747}.primary:hover{background:#174b33}
 .panel{background:white;border:1px solid var(--line);border-radius:16px;overflow:hidden}.bar{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.prompt{margin-bottom:14px;padding:12px 16px}.prompt .row{margin:7px 0}.prompt #zip{width:auto;max-width:100%}.prompt summary{cursor:pointer;font-weight:650}.prompt form{display:grid;gap:8px;margin-top:9px}.prompt form .row{justify-content:space-between}.workspace{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:14px;align-items:start}.palette{padding:10px 14px;display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--line)}.palette button{font-size:13px;padding:5px 8px}.viewport{height:515px;overflow:auto;background:#f7faf5}.canvas{position:relative;background-image:radial-gradient(#c7d6ca 1px,transparent 1px);background-size:18px 18px}.wires{position:absolute;inset:0;pointer-events:none}.wires path{fill:none;stroke:#668675;stroke-width:2}.wires text{fill:#28543f;font-size:12px;font-weight:bold;paint-order:stroke;stroke:#f7faf5;stroke-width:6}.node{position:absolute;width:178px;min-height:76px;display:flex;align-items:flex-start;gap:8px;text-align:left;padding:11px;background:#fff;box-shadow:0 3px 7px #142d2412;touch-action:none;cursor:grab}.node.active{outline:2px solid #277350}.node-icon{flex:none;display:grid;place-items:center;width:28px;height:28px;background:#e7f2e7;color:#24553e;border-radius:8px}.node small{display:block;font-weight:500;margin-top:4px}.node.running{border-color:#8d6600;background:#fffae6}.node.done{border-color:#81b594}.node.failed{border-color:#b7493b;background:#fff1ef}.node.skipped{opacity:.68}.side{padding:15px;display:grid;gap:12px}.side label,.side section{display:grid;gap:6px}.side .row select{flex:1;width:auto;min-width:105px}.side .row button{padding:5px 8px}.danger{color:#9c332f}.hint{padding:9px 14px;border-top:1px solid var(--line);font-size:13px}.message{padding:10px 14px;background:#e9f4e8;border-radius:9px;margin-bottom:12px}.message.error{background:#ffece7;color:#832d22}[hidden]{display:none!important}
 .results{margin-top:14px}.results-body{padding:15px;display:grid;gap:13px}.findings{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr));gap:9px}.finding{text-align:left;padding:12px;display:grid;gap:5px}.badge{display:inline-block;width:fit-content;border-radius:99px;padding:3px 9px;background:#e6f3e8;color:#1b5b38;font-size:12px;font-weight:700}.badge.red{background:#fbe7e3;color:#8e2f27}.badge.amber{background:#fff0cd;color:#724b00}.badge.gray{background:#ebefeb;color:#49594f}.history{display:flex;gap:7px;flex-wrap:wrap}.history button[aria-pressed=true]{background:#e0f1e2;border-color:#8bb99a}.path{overflow-wrap:anywhere}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#eaf0e9;padding:10px;border-radius:8px;margin:0}dialog{width:min(500px,calc(100% - 28px));border:1px solid var(--line);border-radius:16px;padding:18px;color:var(--ink)}dialog::backdrop{background:#132e2470}dialog article{display:grid;gap:12px}dialog form{display:flex;justify-content:flex-end}.muted{font-size:13px;color:var(--muted)}
+#ciGuide ol{margin:0;padding-left:24px}#ciGuide li+li{margin-top:8px}#ciGuide code{overflow-wrap:anywhere}#ciGuide a{color:var(--green)}
 @media(max-width:860px){.workspace{grid-template-columns:1fr}.shell{padding-left:14px;padding-right:14px}.viewport{height:390px}}
 </style>
 </head>
@@ -22,7 +23,7 @@
 <section class="panel prompt" aria-label="Проект и сценарий">
   <div class="row"><label for="zip">Загрузить учебный ZIP</label><input id="zip" type="file" accept=".zip,application/zip"><button id="upload">Загрузить</button></div>
   <div class="row"><label>Проект<select id="snapshot"></select></label><label>База для сравнения<select id="base"></select></label></div>
-  <div class="row"><label>Название сценария<input id="workflowName" value="Проверка"></label><button id="saveWorkflow">Сохранить сценарий</button><label>Сохранённые<select id="workflows"></select></label></div>
+  <div class="row"><label>Название сценария<input id="workflowName" value="Проверка"></label><button id="saveWorkflow">Сохранить сценарий</button><button id="downloadYaml">Получить YAML</button><label>Сохранённые<select id="workflows"></select></label></div>
   <div class="row"><button id="publish">Опубликовать шаблон</button><label>Шаблоны<select id="templates"></select></label><button id="copyTemplate">Создать копию</button></div>
 </section><details class="panel prompt"><summary>Собрать сценарий из текста</summary><form id="promptForm"><label for="prompt">Что нужно проверить?</label><textarea id="prompt" rows="2" placeholder="Например, найди секреты и отправь в Telegram критичные находки" required></textarea><div class="row"><button type="button" id="example">Подставить пример</button><button class="primary">Собрать сценарий</button></div></form></details>
 <p id="message" class="message" role="status" hidden></p>
@@ -33,6 +34,20 @@
 <section class="panel results" aria-labelledby="resultsTitle"><div class="bar"><h2 id="resultsTitle">Результаты проверки</h2><span id="ci"></span></div><div class="results-body" id="results"></div></section>
 </main>
 <dialog id="detail"><article id="detailBody"></article><form method="dialog"><button>Закрыть</button></form></dialog>
+<dialog id="ciGuide" aria-labelledby="ciGuideTitle">
+  <article>
+    <h2 id="ciGuideTitle">Подключение к GitHub Actions</h2>
+    <p>В <code>cyber-garden.yml</code> уже записан ID сценария <code id="ciWorkflowId"></code>.</p>
+    <ol>
+      <li>В проверяемом приватном репозитории добавьте <code>cyber-garden.yml</code> в папку <code>.github/workflows/</code>.</li>
+      <li><a href="/api/v1/ci/client" download="check_cyber_garden.py">Скачайте Python-клиент</a> и положите его в <code>.github/scripts/</code>. Отправьте оба файла в базовую ветку, например <code>main</code>.</li>
+      <li>На компьютере с Octavius подключите к этому репозиторию Windows self-hosted runner с меткой <code>cyber-garden</code>. Git должен быть доступен ему в <code>PATH</code>.</li>
+      <li>В GitHub откройте <strong>Settings → Secrets and variables → Actions → Variables</strong>. Задайте <code>GARDEN_PYTHON</code> с полным путём к <code>python.exe</code> на компьютере runner. Если порт Octavius отличается от <code>8000</code>, задайте <code>GARDEN_PORT</code>. Для Kotlin-проекта в подпапке задайте <code>GARDEN_PROJECT_DIR</code>.</li>
+      <li>Оставьте Octavius и runner запущенными и откройте PR между ветками этого репозитория. В сохранённом сценарии CI должны выполняться все три анализатора. Результат появится в разделе <strong>Checks</strong> этого PR.</li>
+    </ol>
+    <form method="dialog"><button>Закрыть</button></form>
+  </article>
+</dialog>
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
@@ -279,7 +294,7 @@ function drawControls() {
   $('version').textContent = 'Результаты реальных запусков';
   $('run').textContent = busy?'Выполняется…':'▶ Запустить проверку';
   $('run').disabled = busy || !state.snapshotId;
-  for (const id of ['zip','upload','snapshot','base','workflowName','saveWorkflow','workflows','publish','templates','copyTemplate']) $(id).disabled = busy;
+  for (const id of ['zip','upload','snapshot','base','workflowName','saveWorkflow','downloadYaml','workflows','publish','templates','copyTemplate']) $(id).disabled = busy;
   for (const button of [...$('palette').querySelectorAll('button'),...$('promptForm').querySelectorAll('button')]) button.disabled = busy;
 }
 function watchRun(id) {
@@ -396,6 +411,20 @@ $('saveWorkflow').onclick = () => action(async()=>{
   const workflow=await api(path,{graph:state.graph,snapshotId:state.snapshotId || null,name:$('workflowName').value,schedule});
   state.workflowId=workflow.id;
   await refreshLists();save();message(schedule?'Сценарий сохранён. Расписание действует по UTC.':'Сценарий сохранён.');
+});
+$('downloadYaml').onclick = () => action(async()=>{
+  const id = state.workflowId;
+  if (!id) throw Error('Сначала сохраните сценарий.');
+  const response = await fetch('/api/v1/workflows/'+encodeURIComponent(id)+'/github-actions');
+  if (!response.ok) throw Error((await response.json()).message || 'Не удалось скачать YAML.');
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'cyber-garden.yml';
+  link.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  $('ciWorkflowId').textContent = id;
+  $('ciGuide').showModal();
 });
 $('publish').onclick = () => action(async()=>{
   if (!state.workflowId) throw Error('Сначала сохраните сценарий.');

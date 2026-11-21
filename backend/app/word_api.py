@@ -133,6 +133,8 @@ class WordApi:
             row = self.workflow(key)
             if len(pieces) == 2:
                 handler.reply(200, to_workflow(row))
+            elif pieces[2:] == ["github-actions"]:
+                handler.send_ci_workflow(row["id"])
             elif pieces[2:] == ["runs"]:
                 handler.reply(200, [to_run(item) for item in self.runs(key)])
             elif len(pieces) == 5 and pieces[2] == "findings" and pieces[4] == "history":
