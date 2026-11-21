@@ -1,8 +1,16 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      try {
+        if (localStorage.getItem('cyber-garden-theme') === 'prism-light') {
+          document.documentElement.dataset.theme = 'prism-light'
+        }
+      } catch {}
+    </script>
+    <style>html { background: #0b1014; } html[data-theme="prism-light"] { background: #f5f9f3; }</style>
     <title>Cyber Garden</title>
   </head>
   <body>

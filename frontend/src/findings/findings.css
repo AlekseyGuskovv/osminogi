@@ -39,19 +39,19 @@
 .garden .findings-open:hover { color: var(--accent); text-decoration: underline; background: transparent; }
 .findings-location, .findings-review-label { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
 .findings-state[data-state='resolved'] { color: var(--accent); }
-.findings-state[data-state='unverified'] { color: #f7d195; }
+.findings-state[data-state='unverified'] { color: var(--warning); }
 .findings-empty { padding: 26px; border: 1px dashed var(--border); border-radius: var(--radius); }
 .findings-empty h2 { margin: 0 0 14px; }
 .findings-dialog { width: min(670px, calc(100% - 24px)); }
 .findings-dialog-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
 .findings-dialog-heading h2 { margin: 4px 0 0; }
-.findings-dialog .garden-finding { background: #111a1e; }
+.findings-dialog .garden-finding { background: var(--surface); }
 .findings-report-link { margin-top: 10px; }
 .finding-review-form { display: grid; gap: 10px; padding-top: 13px; border-top: 1px solid var(--border); }
 .finding-review-form h3, .finding-review-form p { margin: 0; }
 .finding-review-form h3 { font-size: 15px; }
 .finding-review-form :is(select, button) { justify-self: start; }
-.finding-review-form [role='alert'] { color: #ffb1b6; }
+.finding-review-form [role='alert'] { color: var(--danger); }
 .finding-review-form [role='status'] { color: var(--accent); }
 
 @media (max-width: 900px) {

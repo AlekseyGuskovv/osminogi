@@ -22,7 +22,10 @@
   background: transparent;
   border-color: transparent;
 }
-.snapshot-library button[aria-pressed='true'] { background: #192b26; border-color: #345047; }
+.snapshot-library button[aria-pressed='true'] {
+  background: var(--active, #192b26);
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+}
 .snapshot-library button svg { color: var(--accent); flex-shrink: 0; }
 .snapshot-library-item { display: grid; gap: 4px; min-width: 0; }
 .snapshot-library-item strong { font-size: 13px; overflow-wrap: anywhere; }
@@ -33,7 +36,7 @@
 .snapshot-detail-heading h2 { margin: 0 0 4px; overflow-wrap: anywhere; }
 .snapshot-detail-heading p { margin: 0; }
 .snapshot-panel p { color: var(--muted); font-size: 13px; margin: 8px 0; }
-.snapshot-panel [role='alert'], .snapshot-rename [role='alert'] { color: #ffb1b6; }
+.snapshot-panel [role='alert'], .snapshot-rename [role='alert'] { color: var(--danger); }
 .snapshot-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
 .snapshot-controls label, .snapshot-rename label { display: grid; gap: 5px; min-width: 0; color: var(--muted); font-size: 12px; }
 .snapshot-controls label { flex: 1 1 200px; max-width: 400px; }

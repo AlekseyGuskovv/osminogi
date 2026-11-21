@@ -1,3 +1,4 @@
+import { PrismGlassCard } from '../ui/PrismGlassCard'
 import { useEffect, useRef, useState } from 'react'
 import { apiUrl, getJson, importTemplateYaml, postJson } from '../api'
 import { Icon } from '../ui/Icon'
@@ -135,7 +136,7 @@ export function TemplatesPage({ workflowId, sharedTemplateId }: { workflowId: st
         <button className="garden-primary" disabled={!workflows.length} onClick={showPublishForm}>Опубликовать первый шаблон</button>
       </section>}
       {templates && <div className="garden-findings garden-template-grid">
-        {templates.map(template => <article className="garden-finding" key={template.id} data-template-id={template.id}>
+        {templates.map(template => <PrismGlassCard as="article" variant="elevated" accent="aqua" interactive className="garden-finding" key={template.id} data-template-id={template.id}>
           <span className="garden-template-icon"><Icon name="templates" /></span>
           <h2>{template.name}</h2>{template.description && <p>{template.description}</p>}
           <p className="garden-meta">Блоков: {template.workflow.nodes.length} · Ревизия {template.workflow.revision}</p>
@@ -144,7 +145,7 @@ export function TemplatesPage({ workflowId, sharedTemplateId }: { workflowId: st
             <a href={apiUrl('/templates/' + encodeURIComponent(template.id) + '/yaml')} download="cyber-garden-template.yml">Скачать YAML</a>
             <button onClick={() => showShare(template.id)}>Поделиться ссылкой</button>
           </div>
-        </article>)}
+        </PrismGlassCard>)}
       </div>}
       <dialog className="garden-dialog" ref={dialog} aria-labelledby="publish-template-title" onClose={() => setPublishing(false)}
         onCancel={event => { if (pending) event.preventDefault() }}>

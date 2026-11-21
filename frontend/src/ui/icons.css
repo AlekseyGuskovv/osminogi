@@ -1,0 +1,33 @@
+.prism-icon { flex: none; vertical-align: middle; }
+.garden-primary > .prism-icon, .evolution-resolved-badge > .prism-icon { margin-inline-end: .3em; }
+.prism-gallery { max-width: 1470px; padding: clamp(16px, 4vw, 48px); margin-inline: auto; }
+.prism-gallery > header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.prism-gallery h1 { margin: 0; font-size: clamp(28px, 5vw, 48px); letter-spacing: -.045em; }
+.prism-gallery > p { color: var(--muted); }
+.prism-gallery-themes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.prism-gallery-panel {
+  min-width: 0; padding: 16px; border: 1px solid var(--sample-border); border-radius: 16px;
+  background: var(--sample-bg); color: var(--sample-text); color-scheme: var(--sample-scheme);
+}
+[data-icon-theme='prism-light'] {
+  --sample-bg: #f8fcf6; --sample-text: #244d3c; --sample-border: #b9d4c3;
+  --sample-hover: #eaf5ed; --sample-active: #d9f0dd; --sample-focus: #236c4a; --sample-scheme: light;
+}
+[data-icon-theme='dark'] {
+  --sample-bg: #142228; --sample-text: #ebf8ef; --sample-border: #3b5653;
+  --sample-hover: #233832; --sample-active: #25473c; --sample-focus: #8ce6ac; --sample-scheme: dark;
+}
+.prism-gallery-panel h2 { margin: 0 0 12px; font-size: 16px; }
+.prism-gallery-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(132px,100%),1fr)); gap: 6px; }
+.prism-gallery-grid button {
+  display: grid; justify-items: start; gap: 5px; padding: 7px;
+  min-height: 70px; border-radius: 9px; border: 1px solid var(--sample-border);
+  color: inherit; background: transparent; cursor: pointer;
+}
+.prism-gallery-grid button > span { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.prism-gallery-grid button:hover { background: var(--sample-hover); }
+.prism-gallery-grid button[aria-pressed='true'] { background: var(--sample-active); border-color: var(--sample-focus); }
+.prism-gallery-grid button:focus-visible { outline-color: var(--sample-focus); }
+@media (max-width: 716px) {
+  .prism-gallery-themes { grid-template-columns: 1fr; }
+}
