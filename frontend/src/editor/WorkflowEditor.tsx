@@ -2,6 +2,7 @@ import { Background, Controls, Handle, MarkerType, Position, ReactFlow } from '@
 import type { Connection, Node, NodeChangeset, NodeProps } from '@xyflow/react'
 import { useEffect, useState } from 'react'
 import { getJson } from '../api'
+import { runsUrl } from '../runs/navigation'
 import { useRunStatus, useStartRun } from '../runs/useRun'
 import { nodeTypes } from '../workflow'
 import type { NodeType, Workflow } from '../workflow'
@@ -141,7 +142,9 @@ export function WorkflowEditor({ workflowId }: EditorProps) {
 
   return (
     <main className="garden">
-      <header className="garden-top"><span className="garden-brand"><b aria-hidden="true">✳</b> Cyber Garden</span><span>Редактор сценариев</span></header>
+      <header className="garden-top"><span className="garden-brand"><b aria-hidden="true">✳</b> Cyber Garden</span><span>Редактор сценариев</span>
+        {workflow?.id && <a href={runsUrl(workflow.id)}>Запуски</a>}
+      </header>
       <section className="garden-heading">
         <div><p className="garden-kicker">Сценарии</p><h1>{workflow?.name ?? 'Редактор Workflow'}</h1>
           {workflow && <p className="garden-meta">{workflow.id ? `${workflow.id} · Ревизия ${workflow.revision}` : 'Черновик'}</p>}
@@ -157,8 +160,8 @@ export function WorkflowEditor({ workflowId }: EditorProps) {
         </div>}
       </section>
       {notice && <p className={`garden-notice ${notice.error ? 'error' : ''}`} role={notice.error ? 'alert' : 'status'}>{notice.text}</p>}
-      {accepted && <section className="garden-run-accepted" aria-label="Текущий запуск">
-        <strong>{accepted.id}</strong> <span data-run-status={runStatus}>{{
+      {accepted && workflow?.id && <section className="garden-run-accepted" aria-label="Текущий запуск">
+        <a href={runsUrl(workflow.id, accepted.id)}>{accepted.id}</a> <span data-run-status={runStatus}>{{
           queued: 'В очереди', running: 'Выполняется', succeeded: 'Проверка завершена', failed: 'Проверка завершилась ошибкой',
         }[runStatus ?? 'queued']}</span>
         {runView?.ciStatus && <span data-ci-status={runView.ciStatus}>CI · {runView.ciStatus}</span>}

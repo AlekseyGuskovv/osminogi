@@ -207,22 +207,35 @@ try {
     palette.querySelectorAll('button')[1].click()
     await waitFor(() => document.querySelectorAll('.react-flow__node').length === 11)
     assert(document.querySelector('[data-id="secrets-2"]') && document.querySelector('[data-id="secrets-3"]'), 'Duplicate block types receive distinct IDs')
+    return 'Editor: graph, palette, selection, drag, settings, API save/run and error recovery passed'
+  })
+
+  await evaluate(4175, async () => {
+    async function check(condition, message) {
+      for (let i = 0; i < 80; i++) {
+        if (condition()) return
+        await new Promise(resolve => setTimeout(resolve, 50))
+      }
+      throw new Error(message)
+    }
     const edgePath = branch => document.querySelector(`[data-testid="rf__edge-gate:${branch}"] path.react-flow__edge-path`)?.getAttribute('d')
-    await waitFor(() => edgePath("yes") && edgePath("no"))
+    await check(() => edgePath('yes') && edgePath('no'), 'Initial branch paths')
     const yesPath = edgePath('yes')
     const noPath = edgePath('no')
-    assert(yesPath && noPath, 'Existing branch paths')
-    await clickHandle('[data-id="gate"] [data-handleid="yes"]')
-    await clickHandle('.react-flow__node[data-id="end"] .target')
-    await waitFor(() => edgePath('yes') && edgePath('yes') !== yesPath)
-    assert(edgePath('no') === noPath, 'Changing yes leaves no unchanged')
-    condition.querySelector('.garden-node').click()
-    await waitFor(() => settings.querySelector('button'))
+    const gate = document.querySelector('.react-flow__node[data-id="gate"]')
+    gate.querySelector('[data-handleid="yes"]').click()
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    document.querySelector('.react-flow__node[data-id="end"] .target').click()
+    await check(() => edgePath('yes') && edgePath('yes') !== yesPath, 'Yes branch updated')
+    if (edgePath('no') !== noPath) throw new Error('Changing yes must preserve no')
+    gate.querySelector('.garden-node').click()
+    const settings = document.querySelector('[aria-label="Настройки блока"]')
+    await check(() => settings.querySelector('button'), 'Delete action')
     settings.querySelector('button').click()
-    await waitFor(() => !document.querySelector('.react-flow__node[data-id="gate"]'))
-    assert(!edgePath('yes') && !edgePath('no'), 'Deleted block has no outgoing edges')
-    assert(document.querySelectorAll('.react-flow__edge').length === 5, 'Incoming edge removed; unrelated edges preserved')
-    return 'Editor: graph, palette, selection, drag, branch connections, settings, deletion, API save/run and error recovery passed'
+    await check(() => !document.querySelector('.react-flow__node[data-id="gate"]'), 'Deleted block')
+    await check(() => !edgePath('yes') && !edgePath('no') && document.querySelectorAll('.react-flow__edge').length === 5,
+      'Incident edges removed; unrelated edges preserved')
+    return 'Editor: independent branches and deletion passed'
   })
 
   await evaluate(4175, async () => {
@@ -252,6 +265,32 @@ try {
     }
     throw new Error('Created workflow was not opened')
   }, '/?workflow=new')
+
+  await evaluate(4175, async () => {
+    for (let i = 0; i < 80 && !document.querySelector('[data-finding-id="F-key"]'); i++) {
+      await new Promise(resolve => setTimeout(resolve, 50))
+    }
+    const card = document.querySelector('[data-finding-id="F-key"]')
+    if (!card?.textContent.includes('application.yml:12') ||
+      card.querySelector('pre')?.textContent !== 'api-key: ••••' ||
+      !card.querySelector('[data-severity="critical"]') ||
+      !card.querySelector('[data-recommendation-source="ai"]')) throw new Error('Incomplete finding card')
+    const { postJson } = await import('/src/api.ts')
+    const aiError = await postJson('/workflows/wf-1/runs?scenario=aiError', { trigger: 'manual', snapshotId: 'pr-1' })
+    if (aiError.id !== 'run-5') throw new Error('Expected next run ID and persisted history')
+    await new Promise(resolve => setTimeout(resolve, 650))
+    return 'Findings: criticality, location, masked evidence and AI source displayed'
+  }, '/?view=runs&workflow=wf-1&run=run-1')
+
+  await evaluate(4175, async () => {
+    for (let i = 0; i < 80 && !document.querySelector('[data-recommendation-source="rule"]'); i++) {
+      await new Promise(resolve => setTimeout(resolve, 50))
+    }
+    if (!document.querySelector('[data-recommendation-source="rule"]')?.textContent.includes('правило')) {
+      throw new Error('Expected rule recommendation on AI error')
+    }
+    return 'Findings: fallback rule recommendation displayed'
+  }, '/?view=runs&workflow=wf-1&run=run-5')
 
   await evaluate(4176, async () => {
     const { installMocks } = await import('/src/mocks/worker.ts')

@@ -1,3 +1,5 @@
+import type { Ci, Comparison, Finding, Run, Step } from '../runs/types'
+import type { RunRequest } from '../runs/useRun'
 import type { Workflow } from '../workflow'
 
 export const snapshots = [
@@ -57,42 +59,7 @@ const dependencyFinding = {
   advisoryId: 'DEMO-001',
 } as const
 
-type Finding = Omit<typeof keyFinding | typeof dependencyFinding, 'nodeId' | 'line'> & {
-  nodeId: string
-  line: number
-}
-type Comparison = { introduced: string[]; existing: string[]; resolved: string[] }
-type Delivery = 'sent' | 'failed' | 'skipped'
-type Ci = {
-  status: 'pending' | 'passed' | 'failed' | 'error'
-  reason?: 'CRITICAL_FOUND' | 'NO_CRITICAL' | 'SCAN_FAILED'
-  findingId?: string | null
-  nodeId?: string | null
-  gateNodeId?: string | null
-  branch?: 'yes' | 'no' | null
-}
-type Step = {
-  nodeId: string
-  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'skipped'
-  branch?: 'yes' | 'no'
-  error?: { code: string; message: string }
-}
-
 export type RunScenario = 'empty' | 'scanError' | 'aiError' | 'telegramError'
-export type RunRequest = { trigger: 'manual' | 'schedule' | 'ci'; snapshotId: string; baseSnapshotId?: string }
-export type Run = RunRequest & {
-  id: string
-  workflowId: string
-  workflowRevision: number
-  status: 'queued' | 'running' | 'succeeded' | 'failed'
-  comparison: Comparison
-  findings: Finding[]
-  ci: Ci
-  recommendations: { findingId: string; source: 'ai' | 'rule'; explanation: string; action: string }[]
-  delivery: Delivery
-  report: { summary: string; delivery: Delivery }
-  steps: Step[]
-}
 
 export function compareFindings(current: Finding[], baseline: Finding[]): Comparison {
   const currentIds = new Set<string>(current.map(finding => finding.id))

@@ -1,5 +1,5 @@
 import { HttpResponse } from 'msw'
-import type { Run } from './fixtures'
+import type { Run } from '../runs/types'
 
 type RunEvent =
   | { type: 'run.status'; data: { status: 'running' } }

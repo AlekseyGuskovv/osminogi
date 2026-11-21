@@ -3,7 +3,9 @@ import { nodeTypes } from '../workflow'
 import type { Branch, Workflow, WorkflowDraft } from '../workflow'
 import { runEvents } from './events'
 import { compareFindings, initialWorkflow, makeRun, snapshots } from './fixtures'
-import type { Run, RunRequest, RunScenario } from './fixtures'
+import type { Run } from '../runs/types'
+import type { RunRequest } from '../runs/useRun'
+import type { RunScenario } from './fixtures'
 
 type StoredRun = { result: Run; at: string; readyAt: number; analyzers: string }
 
@@ -29,6 +31,7 @@ function storeWorkflow(workflow: Workflow) {
     // Keep the save available in memory if storage is blocked.
   }
 }
+const runStorageKey = 'cyber-garden.mock.runs.v2'
 const runs = new Map<string, StoredRun>()
 let nextWorkflow = 2
 let nextRun = 4
@@ -157,6 +160,15 @@ storeRun('run-1', initialWorkflow, { trigger: 'ci', baseSnapshotId: 'main-1', sn
 storeRun('run-2', initialWorkflow, { trigger: 'ci', baseSnapshotId: 'main-1', snapshotId: 'pr-2' }, '2026-11-20T11:00:00Z', 0)
 storeRun('run-3', initialWorkflow, { trigger: 'ci', baseSnapshotId: 'main-1', snapshotId: 'pr-3' }, '2026-11-20T12:00:00Z', 0)
 
+try {
+  const cached = globalThis.localStorage?.getItem(runStorageKey)
+  if (cached) {
+    for (const run of JSON.parse(cached) as StoredRun[]) runs.set(run.result.id, run)
+  }
+} catch {
+  // The initial demo runs are still available when storage is unavailable.
+}
+
 function runResponse({ result, readyAt }: StoredRun): Run {
   if (Date.now() >= readyAt) return result
   return {
@@ -237,6 +249,7 @@ export const handlers = [
       return error(422, 'INVALID_TRIGGER', 'Укажите способ запуска сценария.')
     }
 
+    while (runs.has(`run-${nextRun}`)) nextRun++
     const id = `run-${nextRun++}`
     const now = Date.now()
     storeRun(
@@ -247,6 +260,11 @@ export const handlers = [
       now + 600,
       scenarioFor(request),
     )
+    try {
+      globalThis.localStorage?.setItem(runStorageKey, JSON.stringify([...runs.values()].filter(run => run.readyAt > 0)))
+    } catch {
+      // The accepted run remains accessible from this page.
+    }
     return HttpResponse.json({ id, status: 'queued' }, { status: 202 })
   }),
   http.get(api('/workflows/:workflowId/runs'), ({ params }) => {
