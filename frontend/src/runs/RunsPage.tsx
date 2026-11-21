@@ -64,7 +64,7 @@ export function RunsPage({ workflowId, runId }: { workflowId: string; runId?: st
         <h2>Находки</h2>
         {run.findings.length === 0 && <p>Находок нет.</p>}
         <div className="garden-findings">
-          {run.findings.map(finding => <FindingCard key={finding.id} finding={finding}
+          {run.findings.map(finding => <FindingCard key={finding.id} finding={finding} workflowId={run.workflowId}
             recommendation={run.recommendations.find(recommendation => recommendation.findingId === finding.id)} />)}
         </div>
         {run.snapshotId === 'pr-1' && run.findings.some(finding => finding.id === 'F-key') &&

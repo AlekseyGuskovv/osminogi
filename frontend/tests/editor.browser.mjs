@@ -61,10 +61,19 @@ async function evaluate(port, test, path = "/") {
       return result.result.value
     })
     await call('Runtime.addBinding', { name: 'dispatchDrag' })
+    await call('Runtime.addBinding', { name: 'dispatchClick' })
     socket.addEventListener('message', async message => {
       const event = JSON.parse(message.data)
-      if (event.method !== 'Runtime.bindingCalled' || event.params.name !== 'dispatchDrag') return
+      if (event.method !== 'Runtime.bindingCalled') return
       const { x, y } = JSON.parse(event.params.payload)
+      if (event.params.name === 'dispatchClick') {
+        await call('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y })
+        await call('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 })
+        await call('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 })
+        await call('Runtime.evaluate', { expression: 'globalThis.clickComplete = true' })
+        return
+      }
+      if (event.params.name !== 'dispatchDrag') return
       await call('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y })
       await call('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 })
       for (const distance of [10, 25, 45]) {
@@ -187,11 +196,19 @@ try {
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
       const handle = document.querySelector(selector)
       const rect = handle.getBoundingClientRect()
-      handle.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 }))
+      const x = rect.left + rect.width / 2
+      const y = rect.top + rect.height / 2
+      assert(document.elementFromPoint(x, y) === handle, 'Handle must be visible: ' + selector)
+      globalThis.clickComplete = false
+      globalThis.dispatchClick(JSON.stringify({ x, y }))
+      await waitFor(() => globalThis.clickComplete)
     }
     await clickHandle('[data-id="start"] .source')
+    await waitFor(() => document.querySelector('[data-id="start"] .source.clickconnecting'))
     await clickHandle('[data-id="secrets-1"] .target')
+    await waitFor(() => !document.querySelector('[data-id="start"] .source.clickconnecting'))
     await clickHandle('[data-id="secrets-1"] .source')
+    await waitFor(() => document.querySelector('[data-id="secrets-1"] .source.clickconnecting'))
     await clickHandle('[data-id="secret"] .target')
     await waitFor(() => document.querySelector('[data-testid="rf__edge-secrets-1:next"]'))
     buttons.find(button => button.textContent === 'Сохранить').click()
@@ -389,6 +406,30 @@ try {
     }
     throw new Error('Repeat run did not turn green')
   }, '/?view=runs&workflow=wf-1&run=run-6')
+
+  await evaluate(4175, async () => {
+    async function waitFor(condition) {
+      for (let i = 0; i < 80; i++) {
+        const value = condition()
+        if (value) return value
+        await new Promise(resolve => setTimeout(resolve, 50))
+      }
+      throw new Error('Finding history was not rendered')
+    }
+    const card = await waitFor(() => document.querySelector('[data-finding-id="F-key"] summary'))
+    card.click()
+    await waitFor(() => document.querySelector('[data-finding-state="returned"]'))
+    const rows = [...document.querySelectorAll('.garden-finding-history li')].slice(0, 3)
+    if (rows.map(row => row.dataset.findingState).join() !== 'found,resolved,returned') throw new Error('Incorrect history order')
+    if (rows.map(row => row.querySelector('a').textContent).join() !== 'run-1,run-2,run-3') throw new Error('Incorrect history links')
+    const { getJson, ApiError } = await import('/src/api.ts')
+    try { await getJson('/workflows/wf-1/findings/missing/history') }
+    catch (error) {
+      if (error instanceof ApiError && error.status === 404) return 'Finding history: found, resolved, returned and not-found passed'
+      throw error
+    }
+    throw new Error('Missing finding should return 404')
+  }, '/?view=runs&workflow=wf-1&run=run-3')
 
   await evaluate(4176, async () => {
     const { installMocks } = await import('/src/mocks/worker.ts')

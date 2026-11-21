@@ -277,6 +277,29 @@ export const handlers = [
       [...runs.values()].reverse().filter(run => run.result.workflowId === id).map(runResponse),
     )
   }),
+  http.get(api('/workflows/:workflowId/findings/:findingId/history'), ({ params }) => {
+    const workflowId = String(params.workflowId)
+    const findingId = String(params.findingId)
+    if (!workflows.has(workflowId)) return notFound('Сценарий не найден.')
+    const completed = [...runs.values()].filter(run =>
+      run.result.workflowId === workflowId && run.result.id !== 'run-existing' &&
+      runResponse(run).status === 'succeeded',
+    )
+    const first = completed.find(run => run.result.findings.some(finding => finding.id === findingId))
+    if (!first) return notFound('Находка не найдена.')
+
+    const entries: { runId: string; state: 'found' | 'resolved' | 'returned' }[] = []
+    let present = false
+    for (const run of completed) {
+      if (run.analyzers !== first.analyzers) continue
+      const found = run.result.findings.some(finding => finding.id === findingId)
+      if (present !== found) {
+        entries.push({ runId: run.result.id, state: found ? (entries.length ? 'returned' : 'found') : 'resolved' })
+        present = found
+      }
+    }
+    return HttpResponse.json({ findingId, entries })
+  }),
   http.get(api('/runs/:runId'), ({ params }) => {
     const run = runs.get(String(params.runId))
     return run ? HttpResponse.json(runResponse(run)) : notFound('Запуск не найден.')

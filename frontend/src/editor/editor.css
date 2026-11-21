@@ -93,3 +93,8 @@
 .garden-fix-diff > div { border: 1px solid #35463d; padding: 10px; border-radius: 8px; }
 .garden-fix-diff h3 { margin: 0; font-size: 13px; }
 .garden-fix-diff pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.garden-finding details { margin-top: 13px; }
+.garden-finding summary { color: #a9e9c6; cursor: pointer; font-size: 13px; }
+.garden-finding-history { padding-left: 20px; font-size: 13px; }
+.garden-finding-history li { margin: 6px 0; }
+.garden-finding-history [data-finding-state='returned'] { color: #ffb3a5; }

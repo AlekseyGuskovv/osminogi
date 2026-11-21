@@ -18,6 +18,7 @@
 | 14 | Comparison Page | `feat/14-comparison-page` | `5fb759c` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Сравнение с базой PR или прошлым запуском и три категории находок. |
 | 15 | CI Highlight | `feat/15-ci-highlight` | `2f4da95` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Подсветка анализатора, условия и выбранной ветки. |
 | 16 | Threshold Preview | `feat/16-threshold-preview` | `f79fc85` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Предпросмотр без изменения графа или истории. |
-| 17 | Fix Dialog | `feat/17-fix-dialog` | HEAD ветки | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Готово к публикации | Маскированный diff, подтверждение, новый снимок и повторный запуск. |
+| 17 | Fix Dialog | `feat/17-fix-dialog` | `8e355e5` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Маскированный diff, подтверждение, новый снимок и повторный запуск. |
+| 18 | Finding History | `feat/18-finding-history` | HEAD ветки | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Готово к публикации | Состояния found, resolved, returned со ссылками. |
 
-Следующая задача — Task 18, история находки.
+Следующая задача — Task 19, шаблоны.
