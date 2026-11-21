@@ -48,6 +48,23 @@
 <section class="panel results" aria-labelledby="resultsTitle"><div class="bar"><h2 id="resultsTitle">Результаты проверки</h2><span id="ci"></span></div><div class="results-body" id="results"></div></section>
 </main>
 <dialog id="detail"><article id="detailBody"></article><form method="dialog"><button>Закрыть</button></form></dialog>
+<dialog id="nodeCatalog" aria-labelledby="nodeCatalogTitle">
+  <h2 id="nodeCatalogTitle">Каталог нод</h2>
+  <label>Сохранённые ноды<select id="savedNodes"></select></label>
+  <button id="addSavedNode" type="button" disabled>Добавить в сценарий</button>
+  <form id="nodeDraftForm">
+    <label>Что должна делать нода?<textarea id="nodePrompt" rows="2" maxlength="2000" required placeholder="Проверять, есть ли хотя бы три находки"></textarea></label>
+    <button id="generateNode" type="submit">Сгенерировать через CodexGenerator</button>
+  </form>
+  <form id="nodePreview" hidden>
+    <label>Название<input id="nodeTemplateName" maxlength="80" required></label>
+    <label>Описание<textarea id="nodeTemplateDescription" rows="2" maxlength="300"></textarea></label>
+    <p id="nodeTemplateSettings"></p>
+    <button id="saveNodeTemplate" type="submit">Сохранить в каталог</button>
+  </form>
+  <p id="nodeCatalogStatus" role="status"></p>
+  <form method="dialog"><button>Закрыть</button></form>
+</dialog>
 <dialog id="nodeHelp" aria-labelledby="nodeHelpTitle">
   <article><h2 id="nodeHelpTitle"></h2><p id="nodeHelpDescription"></p>
     <form method="dialog"><button>Закрыть</button></form>
@@ -155,7 +172,8 @@ function message(text, error = false) {
   $('message').textContent = text;
   $('message').classList.toggle('error',error);
 }
-const nodeName = node => types[node.type][1];
+const nodeName = node => node.name || types[node.type][1];
+const nodeDescription = node => node.description || types[node.type][2];
 const branchName = branch => ({yes:'Да',no:'Нет'})[branch] || 'Далее';
 const current = () => state.graph.nodes.find(node => node.id === selected);
 function drawWires() {
@@ -181,28 +199,30 @@ function drawGraph() {
   $('nodes').innerHTML = state.graph.nodes.map(node => {
     const step = live[node.id], status = {done:'Готово',running:'Выполняется',skipped:'Пропущено',failed:'Ошибка'}[step?.status] || 'Ожидает запуска';
     return '<div class="node-card" style="left:'+node.x+'px;top:'+node.y+'px">'
-      + '<button class="node '+(node.id===selected?'active ':'')+(step?.status || '')+'" data-id="'+encode(node.id)+'" aria-pressed="'+(node.id===selected)+'"><span class="node-icon" aria-hidden="true">'+types[node.type][0]+'</span><span>'+nodeName(node)+'<small>'+status+'</small></span></button>'
-      + '<button class="node-info" data-help="'+node.type+'" aria-label="О блоке «'+encode(nodeName(node))+'»" aria-haspopup="dialog">i</button></div>';
+      + '<button class="node '+(node.id===selected?'active ':'')+(step?.status || '')+'" data-id="'+encode(node.id)+'" aria-pressed="'+(node.id===selected)+'"><span class="node-icon" aria-hidden="true">'+types[node.type][0]+'</span><span>'+encode(nodeName(node))+'<small>'+status+'</small></span></button>'
+      + '<button class="node-info" data-help="'+encode(node.id)+'" aria-label="О блоке «'+encode(nodeName(node))+'»" aria-haspopup="dialog">i</button></div>';
   }).join('');
   drawWires();
 }
 function drawInspector() {
   const node = current();
   if (!node) { $('inspector').innerHTML = '<h2>Настройки блока</h2><p>Выберите блок на холсте или добавьте новый.</p>'; return; }
-  const options = state.graph.nodes.filter(item=>item.id!==node.id && item.type!=='start');
+  const targets = state.graph.nodes.filter(item=>item.id!==node.id && item.type!=='start');
   const links = state.graph.edges.filter(edge=>edge.source===node.id);
   const locked = busy?' disabled':'';
   const step = live[node.id];
   const metric = node.metric || 'severity';
+  const channelSettings = '<label>Подключение Telegram<select id="nodeChannel"'+locked+'>'+options(telegramConnections,node.channelId ?? (node.channelId===undefined?'telegram-env':''),'Выберите подключение','name')+'</select></label>';
   const gateSettings = '<label>Условие<select id="metric"'+locked+'>'+[['severity','Критичность не ниже'],['count','Находок не меньше'],['title','Название подходит под выражение']].map(([value,label])=>'<option value="'+value+'"'+(value===metric?' selected':'')+'>'+label+'</option>').join('')+'</select></label>'
-    + (metric==='severity'?'<label>Порог<select id="threshold"'+locked+'>'+levels.map((level,index)=>'<option value="'+index+'"'+(index===(node.threshold??2)?' selected':'')+'>'+level+'</option>').join('')+'</select></label>'
+    + (metric==='severity'?'<label>Порог<select id="threshold"'+locked+'>'+['Низкая',...levels].map((level,i)=>[level,i-1]).map(([level,index])=>'<option value="'+index+'"'+(index===(node.threshold??2)?' selected':'')+'>'+level+'</option>').join('')+'</select></label>'
     : '<label>'+(metric==='count'?'Количество':'Регулярное выражение')+'<input id="threshold" '+(metric==='count'?'type="number" min="0" max="5000"':'maxlength="80"')+' value="'+encode(node.threshold)+'"'+locked+'></label>');
-  $('inspector').innerHTML = '<h2>'+nodeName(node)+'</h2><p>'+types[node.type][2]+'</p>'
+  $('inspector').innerHTML = '<h2>'+encode(nodeName(node))+'</h2><p>'+encode(nodeDescription(node))+'</p>'
     + (node.type==='gate'?gateSettings:'')
+    + (node.type==='telegram'?channelSettings:'')
     + (node.type==='start'?'<label>Ежедневный запуск, UTC<input id="schedule" type="time" value="'+encode(node.schedule||'')+'"'+locked+'></label><small>Нажмите «Сохранить сценарий», чтобы активировать расписание на сервере.</small><div class="row"><button id="simulate"'+locked+'>Запустить вручную</button>'+(node.schedule?'<button id="clearSchedule"'+locked+'>Выключить</button>':'')+'</div>':'')
     + '<section><h3>Куда передать результат</h3>'
     + (links.length?links.map(edge=>'<div class="row"><span>'+branchName(edge.branch)+' → '+encode(nodeName(state.graph.nodes.find(item=>item.id===edge.target)))+'</span><button data-unlink="'+state.graph.edges.indexOf(edge)+'"'+locked+' aria-label="Удалить связь">×</button></div>').join(''):'<small>Связей пока нет.</small>')
-    + (options.length && !['finish','telegram'].includes(node.type)?'<div class="row">'+(node.type==='gate'?'<select id="branch" aria-label="Ветка"'+locked+'><option value="yes">Да</option><option value="no">Нет</option></select>':'')+'<select id="target" aria-label="Следующий блок"'+locked+'>'+options.map(item=>'<option value="'+encode(item.id)+'">'+nodeName(item)+(item.id==='yes'?' · Да':item.id==='no'?' · Нет':'')+'</option>').join('')+'</select><button id="link"'+locked+'>Связать</button></div>':'')
+    + (targets.length && !['finish','telegram'].includes(node.type)?'<div class="row">'+(node.type==='gate'?'<select id="branch" aria-label="Ветка"'+locked+'><option value="yes">Да</option><option value="no">Нет</option></select>':'')+'<select id="target" aria-label="Следующий блок"'+locked+'>'+targets.map(item=>'<option value="'+encode(item.id)+'">'+encode(nodeName(item))+(item.id==='yes'?' · Да':item.id==='no'?' · Нет':'')+'</option>').join('')+'</select><button id="link"'+locked+'>Связать</button></div>':'')
     + '</section><section><h3>Данные последнего запуска</h3>'+(step?.output?'<small>На входе находок: '+(step.input ?? '—')+'</small><pre>'+encode(step.output)+'</pre>':'<small>Данные появятся после выполнения блока.</small>')+'</section><div><button class="danger" id="remove"'+locked+'>Удалить блок</button></div>';
 }
 function update() { save(); drawGraph(); drawInspector(); }
@@ -216,23 +236,97 @@ function selectNode(id) {
   }
   drawInspector();
 }
-$('palette').innerHTML = Object.entries(types).map(([type, [,name]])=>'<button data-type="'+type+'">+ '+name+'</button>').join('');
-$('palette').onclick = event => {
-  const type = event.target.closest('[data-type]')?.dataset.type;
-  if (!type || busy) return;
+function addNode(type, metadata = {}) {
   const count = state.graph.nodes.length;
-  const id = type+'-'+Date.now();
-  state.graph.nodes.push({id,type,x:22+(count%4)*200,y:30+Math.floor(count/4)*120});
+  const id = crypto.randomUUID();
+  state.graph.nodes.push({id,type,x:22+(count%4)*200,y:30+Math.floor(count/4)*120,...metadata});
   selected = id;
   edit();
   $('nodes').querySelector('[aria-pressed=true]')?.scrollIntoView({block:'nearest',inline:'nearest'});
+}
+const wordKinds = {sca:'deps',sast:'code',condition:'gate'};
+function fromWordNode({type,settings}) {
+  const kind = wordKinds[type] || type;
+  if (kind==='telegram' && 'channelId' in settings) return {type:kind,channelId:settings.channelId};
+  if (kind!=='gate') return {type:kind};
+  const metric = {maxSeverity:'severity',findingCount:'count',findingTitle:'title'}[settings.metric];
+  const threshold = metric==='severity'?(settings.value==='low'?-1:severities[settings.value]):settings.value;
+  return {type:kind,metric,threshold};
+}
+let telegramConnections = [];
+let nodeTemplates = [];
+let nodeDraft = null;
+async function loadNodeTemplates(chosen = $('savedNodes').value) {
+  nodeTemplates = await api('/node-templates');
+  $('savedNodes').innerHTML = options(nodeTemplates,chosen,'Выберите ноду','name');
+  $('addSavedNode').disabled = !$('savedNodes').value;
+}
+$('palette').innerHTML = Object.entries(types).map(([type, [,name]])=>'<button data-type="'+type+'">+ '+name+'</button>').join('')
+  + '<button id="openNodeCatalog">Создать ноду через AI</button>';
+$('palette').onclick = async event => {
+  if (busy) return;
+  if (event.target.closest('#openNodeCatalog')) {
+    $('nodeCatalogStatus').textContent = '';
+    $('nodeCatalog').showModal();
+    try { await loadNodeTemplates(); }
+    catch (error) { $('nodeCatalogStatus').textContent = error.message; }
+    return;
+  }
+  const type = event.target.closest('[data-type]')?.dataset.type;
+  if (type) addNode(type);
+};
+$('savedNodes').onchange = () => { $('addSavedNode').disabled = !$('savedNodes').value; };
+$('addSavedNode').onclick = () => {
+  const template = nodeTemplates.find(item=>item.id===$('savedNodes').value);
+  if (!template || busy) return;
+  const {type,...settings} = fromWordNode(template);
+  addNode(type,{...(type==='telegram'?{channelId:null}:{}),...settings,name:template.name,description:template.description});
+  $('nodeCatalog').close();
+};
+$('nodeDraftForm').onsubmit = async event => {
+  event.preventDefault();
+  $('generateNode').disabled = true;
+  $('nodePreview').hidden = true;
+  $('nodeCatalogStatus').textContent = 'CodexGenerator готовит ноду…';
+  try {
+    nodeDraft = await api('/node-templates/draft',{prompt:$('nodePrompt').value});
+    const node = fromWordNode(nodeDraft);
+    $('nodeTemplateName').value = nodeDraft.name;
+    $('nodeTemplateDescription').value = nodeDraft.description;
+    const labels = {severity:'Критичность',count:'Минимум находок',title:'Выражение для названия'};
+    const value = node.metric==='severity'?(node.threshold===-1?'Низкая':levels[node.threshold]):node.threshold;
+    $('nodeTemplateSettings').textContent = types[node.type][1]+(node.metric?' · '+labels[node.metric]+' · '+value:'');
+    $('nodePreview').hidden = false;
+    $('nodeCatalogStatus').textContent = '';
+  } catch (error) {
+    $('nodeCatalogStatus').textContent = error.message;
+  } finally {
+    $('generateNode').disabled = false;
+  }
+};
+$('nodePreview').onsubmit = async event => {
+  event.preventDefault();
+  if (!nodeDraft) return;
+  $('saveNodeTemplate').disabled = true;
+  try {
+    const saved = await api('/node-templates',{...nodeDraft,name:$('nodeTemplateName').value,description:$('nodeTemplateDescription').value});
+    $('nodePreview').hidden = true;
+    nodeDraft = null;
+    await loadNodeTemplates(saved.id);
+    $('nodeCatalogStatus').textContent = 'Нода сохранена в каталоге.';
+  } catch (error) {
+    $('nodeCatalogStatus').textContent = error.message;
+  } finally {
+    $('saveNodeTemplate').disabled = false;
+  }
 };
 $('nodes').onclick = event => {
   const info = event.target.closest('[data-help]');
   if (info) {
-    const [, title, description] = types[info.dataset.help];
-    $('nodeHelpTitle').textContent = title;
-    $('nodeHelpDescription').textContent = description;
+    const node = state.graph.nodes.find(item=>item.id===info.dataset.help);
+    if (!node) return;
+    $('nodeHelpTitle').textContent = nodeName(node);
+    $('nodeHelpDescription').textContent = nodeDescription(node);
     $('nodeHelp').showModal();
     return;
   }
@@ -265,6 +359,7 @@ $('nodes').onpointerdown = event => {
 $('inspector').onchange = event => {
   const node = current();
   if (!node || busy) return;
+  if (event.target.id==='nodeChannel') { node.channelId = event.target.value || null; edit(); }
   if (event.target.id==='metric') {
     node.metric = event.target.value;
     node.threshold = {severity:2,count:1,title:'Ключ'}[node.metric];
@@ -303,10 +398,8 @@ $('promptForm').onsubmit = async event => {
   message('Готовим черновик…');
   try {
     const draft = await api('/workflows/draft',{prompt:$('prompt').value});
-    const kinds = {sca:'deps',sast:'code',condition:'gate'};
     state.graph = {
-      nodes:draft.nodes.map(({id,type,x,y,settings})=>({id,type:kinds[type] || type,x,y,
-        ...(type==='condition'?{threshold:severities[settings.value] ?? 2}:{}),
+      nodes:draft.nodes.map(({id,type,x,y,settings})=>({id,x,y,...fromWordNode({type,settings}),
         ...(type==='start' && draft.schedule?{schedule:draft.schedule.time}:{})})),
       edges:draft.edges.map(edge=>({source:edge.from,target:edge.to,branch:edge.branch==='next'?'':edge.branch}))
     };
@@ -405,7 +498,19 @@ function runEntry(result) {
   const fixed = result.ci==='error'?[]:compareWith ?? [];
   return {id:result.id,time:new Date(result.createdAt).toLocaleString('ru-RU'),found,fixed,
     steps:result.steps,ci:result.ci,comparison:result.comparison,summary:result.summary,
-    trigger:result.trigger,delivery:result.delivery,errors:result.integrationErrors};
+    trigger:result.trigger,delivery:result.delivery,errors:result.integrationErrors,
+    technicalErrors:result.technicalErrors};
+}
+function runTechnicalErrors(entry) {
+  if (Array.isArray(entry.technicalErrors)) return entry.technicalErrors;
+  const errors = [...(entry.errors || [])];
+  for (const [nodeId, step] of Object.entries(entry.steps || {})) {
+    if (step.status==='failed' && !errors.some(error=>error.nodeId===nodeId)) {
+      errors.push({nodeId,message:step.output || 'Блок завершился ошибкой.'});
+    }
+  }
+  if (entry.ci==='error' && !errors.length) errors.push({stage:'analysis',message:'Проверка завершилась с технической ошибкой.'});
+  return errors;
 }
 async function run() {
   if (busy || !state.snapshotId) return;
@@ -421,8 +526,8 @@ async function run() {
     state.history = [entry,...state.history].slice(0,15);
     viewed = entry.id;
     drawResults();
-    if (result.ci==='error') message('Анализ завершился ошибкой. Откройте блок на холсте.',true);
-    else if (result.integrationErrors.length) message('Анализаторы завершили работу. Ошибки интеграций указаны в результатах.',true);
+    if (result.ci==='error') message('Проверка не завершена. Подробности в разделе «Технические сбои».',true);
+    else if (runTechnicalErrors(entry).length) message('Анализ завершён. Подробности в разделе «Технические сбои».',true);
     else message('Проверка завершена. Результаты под сценарием.');
   } catch (error) {
     message(error.message,true);
@@ -520,20 +625,25 @@ function drawResults() {
   const ci = {
     failed:['red','Проверка · Есть критические риски'],
     passed:['','Проверка · Критических рисков нет'],
-    error:['red','Проверка · Ошибка анализа'],
+    error:['red','Проверка · Технический сбой'],
     unchecked:['gray','Проверка · Анализ не выполнялся']
   }[entry.ci];
   $('ci').innerHTML = '<span class="badge '+ci[0]+'">'+ci[1]+'</span>';
   const finding = (item,fixed) => '<button class="finding" data-finding="'+item.id+'" data-fixed="'+fixed+'"><span class="badge '+(fixed?'':item.level===2?'red':'amber')+'">'+(fixed?'Устранено':findingLevel(item))+'</span><strong>'+encode(item.title)+'</strong><small class="path">'+encode(item.file)+':'+item.line+'</small></button>';
   const coverage = Object.values(entry.steps || {}).filter(step=>step.coverage);
+  const errors = runTechnicalErrors(entry);
+  const stages = {ai:'CodexGenerator',telegram:'Telegram',analysis:'Анализ',comparison:'Сравнение с базой'};
   $('results').innerHTML = '<div class="history" aria-label="История запусков">'+state.history.map(item=>'<button data-run="'+item.id+'" aria-pressed="'+(viewed===item.id)+'">'+encode(item.time+(item.trigger==='schedule'?' · по расписанию':''))+'</button>').join('')+'</div>'
     + (entry.summary?'<p>'+encode(entry.summary)+'</p>':'')
     + (entry.delivery?.status==='sent'?'<p>Telegram · сообщение '+encode(entry.delivery.messageId)+'</p>':'')
-    + (entry.errors?.length?'<p>'+entry.errors.map(error=>encode(error.message)).join(' · ')+'</p>':'')
     + (entry.comparison?'<p>Сравнение с базой · новые '+entry.comparison.introduced.length+' · существующие '+entry.comparison.existing.length+' · устранённые '+entry.comparison.resolved.length+'</p>':'')
     + coverage.map(step=>'<details class="coverage-details"><summary>Полнота проверки</summary><pre>'+encode(step.output)+'</pre></details>').join('')
-    + '<h3>Открытые находки · '+entry.found.length+'</h3>'+(entry.found.length?'<div class="findings">'+entry.found.map(item=>finding(item,false)).join('')+'</div>':'<p>В выполненных блоках находок нет.</p>')
-    + (entry.fixed.length?'<h3>Устранено · '+entry.fixed.length+'</h3><div class="findings">'+entry.fixed.map(item=>finding(item,true)).join('')+'</div>':'');
+    + '<h3>Проблемы в проекте · '+entry.found.length+'</h3>'+(entry.found.length?'<div class="findings">'+entry.found.map(item=>finding(item,false)).join('')+'</div>':'<p>В выполненных блоках находок нет.</p>')
+    + (entry.fixed.length?'<h3>Устранено · '+entry.fixed.length+'</h3><div class="findings">'+entry.fixed.map(item=>finding(item,true)).join('')+'</div>':'')
+    + (errors.length?'<section><h3>Технические сбои · '+errors.length+'</h3><ul>'+errors.map(error=>{
+      const label = stages[error.stage] || (error.nodeId ? 'Блок '+error.nodeId : 'Проверка');
+      return '<li><strong>'+encode(label)+'</strong> · '+encode(error.message)+'</li>';
+    }).join('')+'</ul></section>':'');
 }
 function advisoryDetails(item) {
   if (!item.advisoryId) return '';
@@ -557,6 +667,7 @@ $('results').onclick = event => {
 };
 drawControls(); update(); drawResults();
 loadCatalog();
+api('/connections').then(items=>{ telegramConnections = items; drawInspector(); }).catch(()=>{});
 refreshLists().then(()=>{
   const saved=state.workflowId && $('workflows').selectedOptions[0];
   if (saved) $('workflowName').value=saved.textContent;

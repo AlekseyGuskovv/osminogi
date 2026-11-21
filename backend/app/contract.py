@@ -50,6 +50,7 @@ def to_internal(data):
         if not isinstance(settings, dict):
             raise ValueError("settings должен быть объектом.")
         node = {key: row.get(key) for key in ("id", "x", "y")}
+        node.update({key: row[key] for key in ("name", "description") if key in row})
         node["type"] = NODE_TYPES.get(kind, kind)
         if kind == "condition":
             metric, operator = METRICS.get(settings.get("metric"), ("", ""))
@@ -75,6 +76,7 @@ def to_word_graph(graph):
     for row in graph["nodes"]:
         kind = row["type"]
         item = {key: row[key] for key in ("id", "x", "y")}
+        item.update({key: row[key] for key in ("name", "description") if key in row})
         settings = {}
         if kind == "gate":
             metric, operator = BACKEND_METRICS[row.get("metric", "severity")]
@@ -108,6 +110,7 @@ def to_run(row):
               "unchecked": "NO_ANALYSIS", "pending": "PENDING"}
     delivery = row.get("delivery", {"status": "skipped"})
     return {**{key: value for key, value in row.items() if key != "graph"},
+            **({"graph": to_word_graph(row["graph"])} if "graph" in row else {}),
             "status": "succeeded" if row["status"] == "partial" else row["status"],
             "findings": findings, "steps": [step_data(key, step) for key, step in row.get("steps", {}).items()],
             "ci": {"status": "error" if ci == "unchecked" else ci, "reason": reason[ci],

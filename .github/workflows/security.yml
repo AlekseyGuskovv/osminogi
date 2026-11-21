@@ -16,19 +16,34 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          fetch-depth: 0
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          persist-credentials: false
+      - name: Check out PR inputs
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: .garden-head
           persist-credentials: false
       - name: Execute the saved security graph
         shell: bash
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           mkdir -p "$RUNNER_TEMP/garden-reports"
-          git archive --format=zip --output="$RUNNER_TEMP/head.zip" "$HEAD_SHA:examples/kotlin-project"
+          head_repo=.
+          if [[ -n "$PR_HEAD_SHA" ]]; then
+            head_repo=.garden-head
+          fi
+          project=examples/kotlin-project
+          if ! git -C "$head_repo" cat-file -e "HEAD:$project/build.gradle.kts"; then
+            echo "::error file=$project/build.gradle.kts::The checked commit must contain the Cyber Garden training project."
+            exit 2
+          fi
+          git -C "$head_repo" archive --format=zip --output="$RUNNER_TEMP/head.zip" "HEAD:$project"
           args=()
-          if [[ -n "$BASE_SHA" ]] && git cat-file -e "$BASE_SHA:examples/kotlin-project"; then
-            git archive --format=zip --output="$RUNNER_TEMP/base.zip" "$BASE_SHA:examples/kotlin-project"
+          if [[ -n "$PR_HEAD_SHA" ]] && git cat-file -e "HEAD:$project/build.gradle.kts"; then
+            git archive --format=zip --output="$RUNNER_TEMP/base.zip" "HEAD:$project"
             args+=(--base "$RUNNER_TEMP/base.zip")
           fi
           python3 -m backend.app.analysis.scan "$RUNNER_TEMP/head.zip" "${args[@]}" \

@@ -122,6 +122,20 @@ class WordApi:
         self.store.put("snapshot", fixed.id, {"id": fixed.id, "label": "Учебный снимок после правки", "files": fixed.files})
         return 201, {"snapshotId": fixed.id}
 
+    def fixable_findings(self, row):
+        candidates = [item for item in row.get("findings", []) if item["ruleId"] == "SECRET-01"]
+        if not candidates:
+            return []
+        snapshot = self.project(row["snapshotId"])
+        result = []
+        for item in candidates:
+            try:
+                build_safe_patch(snapshot, Finding(**item))
+            except ValueError:
+                continue
+            result.append(item["id"])
+        return result
+
     def get(self, path, query, handler):
         pieces = path.strip("/").split("/")
         if path == "/workflows":
@@ -147,7 +161,7 @@ class WordApi:
         elif pieces[0] == "runs" and len(pieces) >= 2:
             row = self.run(pieces[1])
             if len(pieces) == 2:
-                handler.reply(200, to_run(row))
+                handler.reply(200, {**to_run(row), "fixableFindingIds": self.fixable_findings(row)})
             elif pieces[2:] == ["comparison"]:
                 other = query.get("againstRunId", [None])[0]
                 result = self.compare_runs(row, self.run(other)) if other else row.get("comparison")
@@ -160,7 +174,7 @@ class WordApi:
                 report = submission(row.get("findings", []))
                 kind = query.get("format", ["json"])[0]
                 if kind == "markdown":
-                    handler.send_bytes(200, markdown(report).encode(), "text/markdown")
+                    handler.send_bytes(200, markdown(report).encode(), "text/markdown", filename="cyber-garden.md")
                 elif kind == "json":
                     handler.reply(200, report)
                 else:
