@@ -16,6 +16,14 @@ class Dependency:
 
 
 @dataclass(frozen=True)
+class Declaration:
+    group: str | None
+    name: str
+    version: str
+    line: int
+
+
+@dataclass(frozen=True)
 class VersionRange:
     lower: str | None = None
     upper: str | None = None
@@ -34,9 +42,9 @@ class Advisory:
 
 
 SCOPE = r"(?:api|implementation|compileOnly|runtimeOnly|testImplementation|testRuntimeOnly|developmentOnly)"
-DECLARATION_START = r'(?m)^\s*(?:' + SCOPE + r'\s*\(\s*|add\s*\(\s*"' + SCOPE + r'"\s*,\s*)'
+DECLARATION_START = r'(?m)(?:^|(?<=[;{]))\s*(?:' + SCOPE + r'\s*\(\s*|add\s*\(\s*"' + SCOPE + r'"\s*,\s*)'
 DECLARATION = re.compile(
-    DECLARATION_START + r'(?:platform\(\s*)?"(?P<group>[^":$\s]+):(?P<name>[^":$\s]+)(?::(?P<version>[^":\s]+))?"'
+    DECLARATION_START + r'(?:platform\(\s*)?"(?P<group>[^":$\s]+):(?P<name>[^":$\s]+)(?::(?P<version>[^":\r\n]+))?"'
 )
 CATALOG_REFERENCE = re.compile(DECLARATION_START + r"(?:platform\(\s*)?libs\.(\w+(?:\.\w+)*)\s*\)")
 CATALOG_PATH = "gradle/libs.versions.toml"
@@ -95,28 +103,40 @@ def read_version_catalog(text: str) -> dict[str, tuple[str, str, str]]:
     return result
 
 
-def read_dependencies(text: str, properties="", lockfile="", *, catalog=None) -> list[Dependency]:
+def read_declarations(text: str, properties="", *, catalog=None) -> list[Declaration]:
     text = kotlin_source(text)
+    code = kotlin_source(text, keep_strings=False)
     values = dict(PROPERTY.findall(properties))
     for name, literal, provider, property_name in LOCAL.findall(text):
         value = literal or values.get(provider or property_name)
         if value:
             values[name] = value
-    locked = {(row.group, row.name): row.version for row in read_lockfile(lockfile)}
     declarations = []
     for match in DECLARATION.finditer(text):
+        if "(" not in code[match.start():match.start("group")]:
+            continue
         group, name = match["group"], match["name"]
         version = REFERENCE.sub(lambda ref: values.get(ref[1] or ref[2], ref[0]), match["version"] or "")
-        declarations.append((group, name, version, match.start("group")))
-    if catalog:
-        for match in CATALOG_REFERENCE.finditer(text):
-            if match[1] in catalog:
-                declarations.append((*catalog[match[1]], match.start(1)))
+        declarations.append(Declaration(group, name, version.strip(), line_at(text, match.start("group"))))
+    aliases = catalog or {}
+    for match in CATALOG_REFERENCE.finditer(text):
+        if code[match.start(1)].isspace():
+            continue
+        group, name, version = aliases[match[1]] if match[1] in aliases else (None, match[1], "")
+        declarations.append(Declaration(group, name, version.strip(), line_at(text, match.start(1))))
+    return declarations
+
+
+def read_dependencies(text: str, properties="", lockfile="", *, catalog=None, unresolved=None) -> list[Dependency]:
+    locked = {(row.group, row.name): row.version for row in read_lockfile(lockfile)}
     result = []
-    for group, name, raw, offset in declarations:
-        version = locked.get((group, name)) or raw
-        if version and "$" not in version:
-            result.append(Dependency(group, name, version, line_at(text, offset)))
+    for row in read_declarations(text, properties, catalog=catalog):
+        pinned = locked.get((row.group, row.name)) if row.group is not None else None
+        version = pinned or row.version
+        if row.group is not None and version and "$" not in version:
+            result.append(Dependency(row.group, row.name, version, row.line))
+        elif unresolved is not None:
+            unresolved.append((row.line, "unknownAlias" if row.group is None else "unknownVersion"))
     return result
 
 
@@ -143,22 +163,31 @@ def version_in_range(version: str, bounds: VersionRange) -> bool:
         upper < 0 or upper == 0 and bounds.include_upper)
 
 
-def project_dependencies(snapshot: Snapshot):
+def gradle_build_inputs(snapshot: Snapshot):
     catalogs = {}
-    covered_locks = {}
     for path, content in sorted(snapshot.files.items()):
         if path.rsplit("/", 1)[-1] != "build.gradle.kts":
             continue
         prefix = path.removesuffix("build.gradle.kts")
         properties = snapshot.files.get(prefix + "gradle.properties", snapshot.files.get("gradle.properties", ""))
-        lock_path = prefix + LOCKFILE if prefix + LOCKFILE in snapshot.files else LOCKFILE
         catalog_path = prefix + CATALOG_PATH if prefix + CATALOG_PATH in snapshot.files else CATALOG_PATH
         if catalog_path in snapshot.files and catalog_path not in catalogs:
             catalogs[catalog_path] = read_version_catalog(snapshot.files[catalog_path])
+        yield path, content, properties, catalogs.get(catalog_path)
+
+
+def project_dependencies(snapshot: Snapshot, *, unresolved=None):
+    covered_locks = {}
+    for path, content, properties, catalog in gradle_build_inputs(snapshot):
+        prefix = path.removesuffix("build.gradle.kts")
+        lock_path = prefix + LOCKFILE if prefix + LOCKFILE in snapshot.files else LOCKFILE
         lockfile = snapshot.files.get(lock_path, "")
-        for dependency in read_dependencies(content, properties, lockfile, catalog=catalogs.get(catalog_path)):
+        skipped = [] if unresolved is not None else None
+        for dependency in read_dependencies(content, properties, lockfile, catalog=catalog, unresolved=skipped):
             covered_locks.setdefault(lock_path, set()).add((dependency.group, dependency.name, dependency.version))
             yield path, dependency
+        if unresolved is not None and skipped is not None:
+            unresolved.extend((path, line, reason) for line, reason in skipped)
 
     for path, content in sorted(snapshot.files.items()):
         if path.rsplit("/", 1)[-1] != LOCKFILE:

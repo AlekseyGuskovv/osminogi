@@ -1,14 +1,16 @@
 from dataclasses import asdict
 import re
 
+from .analysis.coverage import summarize_coverage
 from .ml.live import generate_report
 from .ml.provider import ModelError
 from .telegram import DeliveryError
 
 
-SCAN_TYPES = {"secrets": "secrets", "deps": "sca", "code": "sast"}
+REQUIRED_SCANS = {"secrets", "sca", "sast"}
+SCAN_TYPES = {"secrets": "secrets", "deps": "sca", "code": "sast", "gradle": "gradle"}
 LEVELS = {"low": -1, "medium": 0, "high": 1, "critical": 2}
-LINEAR = {"start", "ai", *SCAN_TYPES}
+LINEAR = {"start", "ai", "coverage", *SCAN_TYPES}
 TERMINAL = {"finish", "telegram"}
 
 
@@ -107,6 +109,7 @@ def execute(run, graph, snapshot, base, analyzers, provider, notify, *, require_
         count, branch = len(findings), ""
         step(key, "running", count)
         output = f"Находок на выходе: {count}"
+        details = {}
         try:
             if kind == "start":
                 output = f"Снимок {snapshot.id}"
@@ -116,6 +119,8 @@ def execute(run, graph, snapshot, base, analyzers, provider, notify, *, require_
                 scanned.add(analyzer)
                 findings.update({item.id: item for item in rows})
                 output = "\n".join(f"{item.title} · {item.path}:{item.line}" for item in rows) or "Находок нет."
+            elif kind == "coverage":
+                details["coverage"], output = summarize_coverage(snapshot, base, scanned)
             elif kind == "ai":
                 summary, rows = generate_report(list(findings.values()), provider)
                 advice.update({row.findingId: row for row in rows})
@@ -123,6 +128,7 @@ def execute(run, graph, snapshot, base, analyzers, provider, notify, *, require_
             elif kind == "gate":
                 branch = "yes" if condition(nodes[key], list(findings.values())) else "no"
                 output = "Ветка: " + ("Да" if branch == "yes" else "Нет")
+                details = {"branch": branch, "inputFindings": [asdict(item) for item in findings.values()]}
             elif kind == "telegram":
                 rows = [f"{item.severity.upper()} · {item.title} · {item.path}:{item.line}"
                         for item in findings.values()]
@@ -130,8 +136,6 @@ def execute(run, graph, snapshot, base, analyzers, provider, notify, *, require_
                 message_id = notify(nodes[key], report)
                 delivery = {"status": "sent", "messageId": message_id}
                 output = f"Telegram принял отчёт. Номер сообщения: {message_id}."
-            details = ({"branch": branch, "inputFindings": [asdict(item) for item in findings.values()]}
-                       if kind == "gate" else {})
             step(key, "done", count, output, **details)
         except (ModelError, DeliveryError) as error:
             integration_errors.append({"nodeId": key, "message": str(error)})
@@ -152,7 +156,7 @@ def execute(run, graph, snapshot, base, analyzers, provider, notify, *, require_
             resolved = [asdict(previous[key]) for key in delta["resolved"]]
         except (ValueError, KeyError):
             status = "failed"
-    if require_complete and scanned != set(SCAN_TYPES.values()):
+    if require_complete and not REQUIRED_SCANS <= scanned:
         status = "failed"
     ci = ("error" if status == "failed" else
           "failed" if any(item.severity == "critical" for item in findings.values()) else

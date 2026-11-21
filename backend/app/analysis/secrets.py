@@ -26,6 +26,13 @@ FORMATS = (
     (SLACK_TOKEN, "SECRET-SLACK-TOKEN", "slack-token", "Токен Slack в исходниках"),
 )
 CONFIG_COMMENTS = re.compile(r"(?m)^[ \t]*[#!][^\n]*")
+CONFIG_SUFFIXES = (".yml", ".yaml", ".properties", ".env")
+KEY_SUFFIXES = (".pem", ".key")
+KOTLIN_SUFFIXES = (".kt", ".kts")
+
+
+def secret_source(path: str) -> bool:
+    return path.lower().endswith(CONFIG_SUFFIXES + KEY_SUFFIXES) or path.endswith(KOTLIN_SUFFIXES)
 
 
 def classify(key):
@@ -70,7 +77,7 @@ def scan_secrets(snapshot: Snapshot, node_id: str = "secret") -> list[Finding]:
             results[item.id] = item
             covered_lines.add(line)
 
-        if path.lower().endswith((".yml", ".yaml", ".properties", ".env")):
+        if path.lower().endswith(CONFIG_SUFFIXES):
             for line, config_line in enumerate(content.splitlines(), 1):
                 match = CONFIG.match(config_line)
                 if not match or not SENSITIVE.search(match["key"]):
@@ -82,7 +89,7 @@ def scan_secrets(snapshot: Snapshot, node_id: str = "secret") -> list[Finding]:
                 elif literal_value(value):
                     add(key, line, classify(key))
             text = CONFIG_COMMENTS.sub(lambda match: " " * len(match[0]), content)
-        elif path.endswith((".kt", ".kts")):
+        elif path.endswith(KOTLIN_SUFFIXES):
             text = kotlin_source(content)
             literals = {match["name"]: match for match in ASSIGNMENT.finditer(text) if literal_value(match["value"])}
             for key, match in literals.items():
@@ -100,7 +107,7 @@ def scan_secrets(snapshot: Snapshot, node_id: str = "secret") -> list[Finding]:
                     start = min(literals[left].start(), literals[right].start())
                     if start < combo.start():
                         add(name, line_at(text, start), "recoverable-token", line_at(text, sink.start()))
-        elif path.lower().endswith((".pem", ".key")):
+        elif path.lower().endswith(KEY_SUFFIXES):
             text = content
         else:
             continue

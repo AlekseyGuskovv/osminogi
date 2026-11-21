@@ -12,6 +12,7 @@
 .panel{background:white;border:1px solid var(--line);border-radius:16px;overflow:hidden}.bar{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.prompt{margin-bottom:14px;padding:12px 16px}.prompt .row{margin:7px 0}.prompt #zip{width:auto;max-width:100%}.prompt summary{cursor:pointer;font-weight:650}.prompt form{display:grid;gap:8px;margin-top:9px}.prompt form .row{justify-content:space-between}.workspace{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:14px;align-items:start}.palette{padding:10px 14px;display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--line)}.palette button{font-size:13px;padding:5px 8px}.viewport{height:515px;overflow:auto;background:#f7faf5}.canvas{position:relative;background-image:radial-gradient(#c7d6ca 1px,transparent 1px);background-size:18px 18px}.wires{position:absolute;inset:0;pointer-events:none}.wires path{fill:none;stroke:#668675;stroke-width:2}.wires text{fill:#28543f;font-size:12px;font-weight:bold;paint-order:stroke;stroke:#f7faf5;stroke-width:6}.node{position:absolute;width:178px;min-height:76px;display:flex;align-items:flex-start;gap:8px;text-align:left;padding:11px;background:#fff;box-shadow:0 3px 7px #142d2412;touch-action:none;cursor:grab}.node.active{outline:2px solid #277350}.node-icon{flex:none;display:grid;place-items:center;width:28px;height:28px;background:#e7f2e7;color:#24553e;border-radius:8px}.node small{display:block;font-weight:500;margin-top:4px}.node.running{border-color:#8d6600;background:#fffae6}.node.done{border-color:#81b594}.node.failed{border-color:#b7493b;background:#fff1ef}.node.skipped{opacity:.68}.side{padding:15px;display:grid;gap:12px}.side label,.side section{display:grid;gap:6px}.side .row select{flex:1;width:auto;min-width:105px}.side .row button{padding:5px 8px}.danger{color:#9c332f}.hint{padding:9px 14px;border-top:1px solid var(--line);font-size:13px}.message{padding:10px 14px;background:#e9f4e8;border-radius:9px;margin-bottom:12px}.message.error{background:#ffece7;color:#832d22}[hidden]{display:none!important}
 .results{margin-top:14px}.results-body{padding:15px;display:grid;gap:13px}.findings{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr));gap:9px}.finding{text-align:left;padding:12px;display:grid;gap:5px}.badge{display:inline-block;width:fit-content;border-radius:99px;padding:3px 9px;background:#e6f3e8;color:#1b5b38;font-size:12px;font-weight:700}.badge.red{background:#fbe7e3;color:#8e2f27}.badge.amber{background:#fff0cd;color:#724b00}.badge.gray{background:#ebefeb;color:#49594f}.history{display:flex;gap:7px;flex-wrap:wrap}.history button[aria-pressed=true]{background:#e0f1e2;border-color:#8bb99a}.path{overflow-wrap:anywhere}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#eaf0e9;padding:10px;border-radius:8px;margin:0}dialog{width:min(500px,calc(100% - 28px));border:1px solid var(--line);border-radius:16px;padding:18px;color:var(--ink)}dialog::backdrop{background:#132e2470}dialog article{display:grid;gap:12px}dialog form{display:flex;justify-content:flex-end}.muted{font-size:13px;color:var(--muted)}
 #ciGuide ol{margin:0;padding-left:24px}#ciGuide li+li{margin-top:8px}#ciGuide code{overflow-wrap:anywhere}#ciGuide a{color:var(--green)}
+.node-card{position:absolute;width:178px}.node-card .node{position:relative;width:100%;padding-right:32px}.node-info{position:absolute;top:7px;right:7px;display:grid;place-items:center;width:22px;height:22px;padding:0;border-radius:50%;color:var(--green);line-height:1}.coverage-details summary{cursor:pointer;margin-bottom:6px}
 @media(max-width:860px){.workspace{grid-template-columns:1fr}.shell{padding-left:14px;padding-right:14px}.viewport{height:390px}}
 </style>
 </head>
@@ -34,6 +35,11 @@
 <section class="panel results" aria-labelledby="resultsTitle"><div class="bar"><h2 id="resultsTitle">Результаты проверки</h2><span id="ci"></span></div><div class="results-body" id="results"></div></section>
 </main>
 <dialog id="detail"><article id="detailBody"></article><form method="dialog"><button>Закрыть</button></form></dialog>
+<dialog id="nodeHelp" aria-labelledby="nodeHelpTitle">
+  <article><h2 id="nodeHelpTitle"></h2><p id="nodeHelpDescription"></p>
+    <form method="dialog"><button>Закрыть</button></form>
+  </article>
+</dialog>
 <dialog id="ciGuide" aria-labelledby="ciGuideTitle">
   <article>
     <h2 id="ciGuideTitle">Подключение к GitHub Actions</h2>
@@ -54,11 +60,13 @@ const $ = id => document.getElementById(id);
 const encode = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[char]);
 const types = {
   start: ['▶', 'Запуск', 'Запустите проверку кнопкой или сохраните ежедневное расписание.'],
-  secrets: ['⌑', 'Найти секреты', 'Показывает учебную находку для ключа, оставленного в настройках.'],
-  deps: ['▦', 'Проверить зависимости', 'Показывает учебную находку по версии библиотеки в Gradle.'],
-  code: ['⌘', 'Проверить код', 'Показывает учебную находку по настройкам доступа в Kotlin.'],
+  secrets: ['⌑', 'Найти секреты', 'Ищет пароли, токены и приватные ключи в коде и конфигурации. Значения скрываются в отчёте.'],
+  deps: ['▦', 'Проверить зависимости', 'Сверяет версии библиотек Gradle с каталогом известных уязвимостей.'],
+  code: ['⌘', 'Проверить код', 'Ищет подозрительные конструкции Kotlin и небезопасные настройки Spring Boot.'],
+  gradle: ['⚙', 'Безопасность Gradle', 'Ищет HTTP-репозитории, разрешение небезопасного протокола и динамические версии. Учитывает наличие записи в lock-файле. Gradle не запускается.'],
+  coverage: ['≡', 'Полнота проверки', 'Показывает уже выполненные анализаторы, доступные им файлы и версии зависимостей, которые SCA не смог проверить. Поставьте блок после нужных проверок.'],
   ai: ['✳', 'Объяснить риски', 'Запрашивает сводку и объяснения у CodexGenerator.'],
-  gate: ['◇', 'Проверить критичность', 'Выбирает ветку по самой серьёзной находке.'],
+  gate: ['◇', 'Проверить критичность', 'Выбирает ветку по критичности, числу находок или регулярному выражению для их названий.'],
   telegram: ['➤', 'Отчёт в Telegram', 'Отправляет отчёт в закрытый Telegram-чат, настроенный на сервере.'],
   finish: ['✓', 'Завершить', 'Показывает результат этой ветки.']
 };
@@ -128,7 +136,9 @@ function drawWires() {
 function drawGraph() {
   $('nodes').innerHTML = state.graph.nodes.map(node => {
     const step = live[node.id], status = {done:'Готово',running:'Выполняется',skipped:'Пропущено',failed:'Ошибка'}[step?.status] || 'Ожидает запуска';
-    return '<button class="node '+(node.id===selected?'active ':'')+(step?.status || '')+'" data-id="'+encode(node.id)+'" aria-pressed="'+(node.id===selected)+'" style="left:'+node.x+'px;top:'+node.y+'px"><span class="node-icon" aria-hidden="true">'+types[node.type][0]+'</span><span>'+nodeName(node)+'<small>'+status+'</small></span></button>';
+    return '<div class="node-card" style="left:'+node.x+'px;top:'+node.y+'px">'
+      + '<button class="node '+(node.id===selected?'active ':'')+(step?.status || '')+'" data-id="'+encode(node.id)+'" aria-pressed="'+(node.id===selected)+'"><span class="node-icon" aria-hidden="true">'+types[node.type][0]+'</span><span>'+nodeName(node)+'<small>'+status+'</small></span></button>'
+      + '<button class="node-info" data-help="'+node.type+'" aria-label="О блоке «'+encode(nodeName(node))+'»" aria-haspopup="dialog">i</button></div>';
   }).join('');
   drawWires();
 }
@@ -155,7 +165,7 @@ function update() { save(); drawGraph(); drawInspector(); }
 function edit() { live = {}; update(); }
 function selectNode(id) {
   selected = id;
-  for (const node of $('nodes').children) {
+  for (const node of $('nodes').querySelectorAll('.node')) {
     const active = node.dataset.id === id;
     node.classList.toggle('active',active);
     node.setAttribute('aria-pressed',active);
@@ -174,6 +184,14 @@ $('palette').onclick = event => {
   $('nodes').querySelector('[aria-pressed=true]')?.scrollIntoView({block:'nearest',inline:'nearest'});
 };
 $('nodes').onclick = event => {
+  const info = event.target.closest('[data-help]');
+  if (info) {
+    const [, title, description] = types[info.dataset.help];
+    $('nodeHelpTitle').textContent = title;
+    $('nodeHelpDescription').textContent = description;
+    $('nodeHelp').showModal();
+    return;
+  }
   const id = event.target.closest('.node')?.dataset.id;
   if (id) selectNode(id);
 };
@@ -181,6 +199,7 @@ $('nodes').onpointerdown = event => {
   const button = event.target.closest('.node');
   if (!button || busy || event.button!==0) return;
   const node = state.graph.nodes.find(item=>item.id===button.dataset.id);
+  const card = button.parentElement;
   const start = {x:event.clientX,y:event.clientY,left:node.x,top:node.y};
   let moved = false;
   button.setPointerCapture(event.pointerId);
@@ -190,8 +209,8 @@ $('nodes').onpointerdown = event => {
     moved = true;
     node.x = Math.max(5,start.left+x);
     node.y = Math.max(5,start.top+y);
-    button.style.left = node.x+'px';
-    button.style.top = node.y+'px';
+    card.style.left = node.x+'px';
+    card.style.top = node.y+'px';
     drawWires();
   };
   button.onlostpointercapture = () => {
@@ -328,13 +347,13 @@ function watchRun(id) {
 function runEntry(result) {
   const found = result.findings.map(item=>{
     const recommendation = result.recommendations.find(row=>row.findingId===item.id);
-    return {id:item.id,title:item.title,level:severities[item.severity],file:item.path,line:item.line,
+    return {id:item.id,title:item.title,severity:item.severity,level:severities[item.severity],file:item.path,line:item.line,
       evidence:item.evidence,source:analyzer[item.ruleId],
       explain:recommendation?.explanation || 'Анализатор отметил эту строку для проверки.',
-      fix:recommendation?.action || 'Проверьте отмеченную настройку.',
+      fix:recommendation?.action || item.remediation || 'Проверьте отмеченную настройку.',
       adviceSource:recommendation?.source,advisoryId:item.advisoryId};
   });
-  const compareWith = result.resolvedFindings?.map(item=>({id:item.id,title:item.title,level:severities[item.severity],
+  const compareWith = result.resolvedFindings?.map(item=>({id:item.id,title:item.title,severity:item.severity,level:severities[item.severity],
     file:item.path,line:item.line,evidence:item.evidence,explain:'Находка присутствовала в базовом снимке.',fix:'Проверьте изменение в исходном файле.'}));
   const fixed = result.ci==='error'?[]:compareWith ?? [];
   return {id:result.id,time:new Date(result.createdAt).toLocaleString('ru-RU'),found,fixed,
@@ -447,6 +466,7 @@ async function refreshHistory() {
   if (current) viewed=state.history[0]?.id;
   drawResults();save();
 }
+const findingLevel = item => item.severity==='low'?'Низкая':levels[item.level];
 function drawResults() {
   const entry = state.history.find(item=>item.id===viewed);
   if (!entry) { $('results').innerHTML = '<p>Запустите проверку, чтобы увидеть находки и статус перед слиянием.</p>'; return; }
@@ -457,12 +477,14 @@ function drawResults() {
     unchecked:['gray','Проверка · Анализ не выполнялся']
   }[entry.ci];
   $('ci').innerHTML = '<span class="badge '+ci[0]+'">'+ci[1]+'</span>';
-  const finding = (item,fixed) => '<button class="finding" data-finding="'+item.id+'" data-fixed="'+fixed+'"><span class="badge '+(fixed?'':item.level===2?'red':'amber')+'">'+(fixed?'Устранено':levels[item.level])+'</span><strong>'+encode(item.title)+'</strong><small class="path">'+encode(item.file)+':'+item.line+'</small></button>';
+  const finding = (item,fixed) => '<button class="finding" data-finding="'+item.id+'" data-fixed="'+fixed+'"><span class="badge '+(fixed?'':item.level===2?'red':'amber')+'">'+(fixed?'Устранено':findingLevel(item))+'</span><strong>'+encode(item.title)+'</strong><small class="path">'+encode(item.file)+':'+item.line+'</small></button>';
+  const coverage = Object.values(entry.steps || {}).filter(step=>step.coverage);
   $('results').innerHTML = '<div class="history" aria-label="История запусков">'+state.history.map(item=>'<button data-run="'+item.id+'" aria-pressed="'+(viewed===item.id)+'">'+encode(item.time+(item.trigger==='schedule'?' · по расписанию':''))+'</button>').join('')+'</div>'
     + (entry.summary?'<p>'+encode(entry.summary)+'</p>':'')
     + (entry.delivery?.status==='sent'?'<p>Telegram · сообщение '+encode(entry.delivery.messageId)+'</p>':'')
     + (entry.errors?.length?'<p>'+entry.errors.map(error=>encode(error.message)).join(' · ')+'</p>':'')
     + (entry.comparison?'<p>Сравнение с базой · новые '+entry.comparison.introduced.length+' · существующие '+entry.comparison.existing.length+' · устранённые '+entry.comparison.resolved.length+'</p>':'')
+    + coverage.map(step=>'<details class="coverage-details"><summary>Полнота проверки</summary><pre>'+encode(step.output)+'</pre></details>').join('')
     + '<h3>Открытые находки · '+entry.found.length+'</h3>'+(entry.found.length?'<div class="findings">'+entry.found.map(item=>finding(item,false)).join('')+'</div>':'<p>В выполненных блоках находок нет.</p>')
     + (entry.fixed.length?'<h3>Устранено · '+entry.fixed.length+'</h3><div class="findings">'+entry.fixed.map(item=>finding(item,true)).join('')+'</div>':'');
 }
@@ -472,7 +494,7 @@ $('results').onclick = event => {
   if (button.dataset.run) { viewed = button.dataset.run; drawResults(); return; }
   const entry = state.history.find(item=>item.id===viewed), fixed = button.dataset.fixed==='true';
   const item = (fixed ? entry.fixed : entry.found).find(result=>result.id===button.dataset.finding);
-  $('detailBody').innerHTML = '<span class="badge '+(fixed?'':item.level===2?'red':'amber')+'">'+(fixed?'Устранено':levels[item.level])+'</span><h2>'+encode(item.title)+'</h2><p class="path">'+encode(item.file)+' · строка '+item.line+'</p><pre>'+encode(item.evidence)+'</pre>'+(item.advisoryId?'<small>Запись справочника · '+encode(item.advisoryId)+'</small>':'')+'<section><h3>Почему это важно</h3><p>'+encode(item.explain)+'</p></section><section><h3>Что исправить</h3><p>'+encode(item.fix)+'</p></section><small>'+(item.adviceSource==='ai'?'Совет CodexGenerator':item.adviceSource==='rule'?'Совет из правила':'Справка к находке')+'</small>';
+  $('detailBody').innerHTML = '<span class="badge '+(fixed?'':item.level===2?'red':'amber')+'">'+(fixed?'Устранено':findingLevel(item))+'</span><h2>'+encode(item.title)+'</h2><p class="path">'+encode(item.file)+' · строка '+item.line+'</p><pre>'+encode(item.evidence)+'</pre>'+(item.advisoryId?'<small>Запись справочника · '+encode(item.advisoryId)+'</small>':'')+'<section><h3>Почему это важно</h3><p>'+encode(item.explain)+'</p></section><section><h3>Что исправить</h3><p>'+encode(item.fix)+'</p></section><small>'+(item.adviceSource==='ai'?'Совет CodexGenerator':item.adviceSource==='rule'?'Совет из правила':'Справка к находке')+'</small>';
   $('detail').showModal();
 };
 drawControls(); update(); drawResults();

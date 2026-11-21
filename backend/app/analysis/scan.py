@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 
 from ..contract import to_internal
-from ..engine import execute_headless
+from ..engine import REQUIRED_SCANS, execute_headless
 from ..project_import import MAX_UPLOAD, read_project
 from .advisories import load_advisories
 from .registry import register_analysis_handlers
@@ -25,6 +25,7 @@ def load_archive(path):
 
 def analyze_snapshot(snapshot, advisories):
     return {row.id: row for name, handler in register_analysis_handlers(advisories).items()
+            if name in REQUIRED_SCANS
             for row in handler(snapshot, name)}
 
 
