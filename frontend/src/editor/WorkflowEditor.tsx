@@ -23,7 +23,8 @@ const labels: Record<NodeType, [string, string]> = {
   finish: ['Завершение', '✓'],
 }
 
-type Block = Node<{ kind: NodeType }, 'workflow'>
+const statuses = { queued: 'В очереди', running: 'Выполняется', succeeded: 'Готово', failed: 'Ошибка', skipped: 'Пропущен' }
+type Block = Node<{ kind: NodeType; status?: keyof typeof statuses }, 'workflow'>
 type Snapshot = { id: string; label: string }
 export type EditorProps = { workflowId?: string }
 
@@ -34,7 +35,7 @@ function WorkflowBlock({ data, selected }: NodeProps<Block>) {
     <div className={`garden-node ${selected ? 'selected' : ''}`}>
       {kind !== 'start' && <Handle type="target" position={Position.Left} />}
       <span className="garden-icon" aria-hidden="true">{icon}</span>
-      <span>{label}</span>
+      <span>{label}{data.status && <small data-node-status={data.status}>{statuses[data.status]}</small>}</span>
       {kind === 'condition' ? <>
         <Handle type="source" id="yes" position={Position.Right} style={{ top: '32%' }} />
         <Handle type="source" id="no" position={Position.Right} style={{ top: '72%' }} />
@@ -59,6 +60,7 @@ export function WorkflowEditor({ workflowId }: EditorProps) {
   const runStatus = runView?.status ?? accepted?.status
   const [notice, setNotice] = useState<{ text: string; error?: boolean }>()
   const activeNode = workflow?.nodes.find(node => node.id === selectedId)
+  const activeNodeView = runView?.nodes[selectedId]
 
   useEffect(() => {
     let active = true
@@ -128,7 +130,7 @@ export function WorkflowEditor({ workflowId }: EditorProps) {
 
   const nodes: Block[] = (workflow?.nodes ?? []).map(node => ({
     id: node.id, type: 'workflow', position: { x: node.x, y: node.y },
-    data: { kind: node.type }, selected: node.id === selectedId,
+    data: { kind: node.type, status: runView?.nodes[node.id]?.status }, selected: node.id === selectedId,
   }))
   const edges = (workflow?.edges ?? []).map(edge => ({
     id: `${edge.from}:${edge.branch}`, source: edge.from, target: edge.to, sourceHandle: edge.branch,
@@ -186,6 +188,13 @@ export function WorkflowEditor({ workflowId }: EditorProps) {
               }))}
               onScheduleChange={schedule => setWorkflow(current => current && ({ ...current, schedule }))} />
             <dl><dt>X</dt><dd>{Math.round(activeNode.x)}</dd><dt>Y</dt><dd>{Math.round(activeNode.y)}</dd></dl>
+            {activeNodeView && <div className="garden-node-output">
+              <h3>Данные запуска</h3>
+              <p>{statuses[activeNodeView.status]}</p>
+              {activeNodeView.input !== undefined && <><h4>Вход</h4><pre>{JSON.stringify(activeNodeView.input, null, 2)}</pre></>}
+              {activeNodeView.output !== undefined && <><h4>Выход</h4><pre>{JSON.stringify(activeNodeView.output, null, 2)}</pre></>}
+              {activeNodeView.error && <p>{activeNodeView.error.message}</p>}
+            </div>}
             <button disabled={pending} onClick={() => {
               setWorkflow(current => current && removeNode(current, selectedId))
               setSelectedId('')

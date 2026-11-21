@@ -175,6 +175,10 @@ try {
 
     await waitFor(() => document.querySelector('[data-run-status="succeeded"]'))
     assert(document.querySelector('[data-ci-status="failed"]'), 'Native SSE separates completed run from red CI')
+    assert(document.querySelector('[data-id="secret"] [data-node-status="succeeded"]'), 'Secret status updated on the graph')
+    document.querySelector('[data-id="secret"] .garden-node').click()
+    await waitFor(() => settings.querySelector('pre')?.textContent.includes('F-key'))
+    assert(document.querySelector('[data-id="gate"] [data-node-status="succeeded"]'), 'Other nodes retain their status')
     const { postJson } = await import('/src/api.ts')
     const addAndSelect = () => palette.querySelectorAll('button')[1].click()
     addAndSelect()

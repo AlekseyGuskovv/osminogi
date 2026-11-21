@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { getJson, postJson } from '../api'
-import { subscribeRun } from './events'
-import type { CiStatus, RunStatus } from './events'
+import { getJson, postJson } from '../api.ts'
+import { subscribeRun } from './events.ts'
+import type { CiStatus, RunEvent, RunStatus } from './events.ts'
 
 export type RunRequest = {
   trigger: 'manual' | 'schedule' | 'ci'
@@ -39,10 +39,31 @@ export function useStartRun() {
 }
 
 
-type RunSummary = { id: string; status: RunStatus; ci: { status: CiStatus } }
+type NodeView = { status: RunStatus | 'skipped'; input?: unknown; output?: unknown; error?: { code: string; message: string } }
+export type RunView = {
+  id: string
+  status: RunStatus
+  ciStatus?: CiStatus
+  nodes: Record<string, NodeView>
+}
+type RunSummary = {
+  id: string
+  status: RunStatus
+  ci: { status: CiStatus }
+  steps: ({ nodeId: string } & NodeView)[]
+}
+
+export function applyRunEvent(view: RunView, event: RunEvent): RunView {
+  if (event.runId !== view.id) return view
+  if (event.type === 'run.status') return { ...view, status: event.data.status }
+  if (event.type === 'run.finished') return { ...view, status: event.data.status, ciStatus: event.data.ciStatus }
+
+  const { nodeId, ...change } = event.data
+  return { ...view, nodes: { ...view.nodes, [nodeId]: { ...view.nodes[nodeId], ...change } } }
+}
 
 export function useRunStatus(runId?: string) {
-  const [view, setView] = useState<{ id: string; status: RunStatus; ciStatus?: CiStatus }>()
+  const [view, setView] = useState<RunView>()
 
   useEffect(() => {
     if (!runId) return
@@ -50,16 +71,22 @@ export function useRunStatus(runId?: string) {
     let active = true
     async function refresh() {
       const run = await getJson<RunSummary>(`/runs/${encodeURIComponent(id)}`)
-      if (active) setView({ id, status: run.status, ciStatus: run.ci.status })
+      if (active) setView(current => {
+        const nodes = { ...(current?.id === id ? current.nodes : undefined) }
+        for (const { nodeId, ...step } of run.steps) {
+          nodes[nodeId] = { ...nodes[nodeId], ...step }
+        }
+        return { id, status: run.status, ciStatus: run.ci.status, nodes }
+      })
       return run.status === 'queued' || run.status === 'running'
     }
 
     const unsubscribe = subscribeRun(id, async event => {
-      if (event.type === 'run.status') setView({ id, status: event.data.status })
-      if (event.type === 'run.finished') {
-        setView({ id, status: event.data.status, ciStatus: event.data.ciStatus })
-        await refresh()
-      }
+      setView(current => applyRunEvent(
+        current?.id === id ? current : { id, status: 'queued', nodes: {} },
+        event,
+      ))
+      if (event.type === 'run.finished') await refresh()
     }, refresh)
     return () => {
       active = false
