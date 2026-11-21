@@ -10,6 +10,7 @@ import { nodeTypes } from '../workflow'
 import type { NodeType, Workflow } from '../workflow'
 import { newWorkflow, saveDraft } from './useWorkflow'
 import type { EditableWorkflow } from './useWorkflow'
+import { DraftDialog } from './DraftDialog'
 import { NodeSettings } from './NodeSettings'
 import { addNode, connect, removeNode } from './graph'
 import '@xyflow/react/dist/style.css'
@@ -174,6 +175,16 @@ export function WorkflowEditor({ workflowId, ciRunId }: EditorProps) {
         </div>
         {workflow && <div className="garden-actions">
           <a href="?workflow=new">Новый сценарий</a>
+          <DraftDialog onOpenDraft={draft => {
+            setWorkflow(draft)
+            setSnapshotId(draft.snapshotId ?? '')
+            setSelectedId('')
+            setCiRun(undefined)
+            setNotice(undefined)
+            const url = new URL(window.location.href)
+            url.search = new URLSearchParams({ workflow: 'new' }).toString()
+            window.history.replaceState(null, '', url)
+          }} />
           <label>Снимок<select value={snapshotId} disabled={pending} onChange={event => setSnapshotId(event.target.value)}>
             <option value="">Выберите снимок</option>
             {snapshots.map(snapshot => <option key={snapshot.id} value={snapshot.id}>{snapshot.label}</option>)}

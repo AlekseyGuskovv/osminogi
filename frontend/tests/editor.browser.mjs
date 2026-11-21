@@ -276,7 +276,7 @@ try {
     for (let attempt = 0; attempt < 80 && !document.querySelector('.garden-actions button'); attempt++) {
       await new Promise(resolve => setTimeout(resolve, 50))
     }
-    document.querySelector('.garden-actions button').click()
+    [...document.querySelectorAll('.garden-actions button')].find(button => button.textContent === 'Сохранить').click()
     for (let attempt = 0; attempt < 80; attempt++) {
       const id = new URL(location.href).searchParams.get('workflow')
       if (id === 'wf-2') return 'Create: submitted a draft and opened its persisted record'
@@ -471,6 +471,47 @@ try {
     }
     return 'Templates: copy opens in editor without modifying the original'
   }, '/?workflow=wf-3')
+
+  await evaluate(4175, async () => {
+    async function waitFor(predicate) {
+      for (let i = 0; i < 100; i++) {
+        const value = predicate()
+        if (value) return value
+        await new Promise(resolve => setTimeout(resolve, 50))
+      }
+      throw new Error('Draft did not reach expected state')
+    }
+    const button = text => [...document.querySelectorAll('button')].find(item => item.textContent === text)
+    const { getJson } = await import('/src/api.ts')
+    const count = (await getJson('/workflows')).length
+    const open = await waitFor(() => button('AI-черновик'))
+    open.click()
+    const input = document.querySelector('dialog textarea')
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, 'Найди секреты и объясни риски')
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await waitFor(() => !button('Сгенерировать черновик')?.disabled)
+    document.querySelector('.garden-draft-form').requestSubmit()
+    const accept = await waitFor(() => button('Открыть в редакторе'))
+    accept.click()
+    await waitFor(() => location.search === '?workflow=new' && document.querySelector('h1').textContent === 'Черновик проверки проекта')
+    if ((await getJson('/workflows')).length !== count) throw new Error('Generated draft was automatically saved')
+    document.querySelector('[data-id="gate"] .garden-node').click()
+    const threshold = await waitFor(() => document.querySelector('[aria-label="Настройки блока"] select:has(option[value="critical"])'))
+    threshold.value = 'high'
+    threshold.dispatchEvent(new Event('change', { bubbles: true }))
+    const snapshot = document.querySelector('.garden-actions > label select')
+    snapshot.value = 'pr-2'
+    snapshot.dispatchEvent(new Event('change', { bubbles: true }))
+    await new Promise(resolve => requestAnimationFrame(resolve))
+    button('Сохранить').click()
+    await waitFor(() => location.search === '?workflow=wf-4')
+    const saved = await getJson('/workflows/wf-4')
+    if (saved.nodes.find(node => node.id === 'gate').settings.value !== 'high') throw new Error('Draft edits lost on save')
+    button('▷ Запустить').click()
+    await waitFor(() => document.querySelector('[data-run-status="succeeded"]'))
+    if (!document.querySelector('[data-ci-status="passed"]')) throw new Error('Draft run did not pass')
+    return 'AI draft: generated, edited, explicitly saved, and ran to green CI'
+  })
 
   await evaluate(4176, async () => {
     const { installMocks } = await import('/src/mocks/worker.ts')

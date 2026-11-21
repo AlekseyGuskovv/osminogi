@@ -255,6 +255,14 @@ export const handlers = [
     const workflow = workflows.get(String(params.workflowId))
     return workflow ? HttpResponse.json(workflow) : notFound('Сценарий не найден.')
   }),
+  http.post(api('/workflows/draft'), async ({ request }) => {
+    const body = await readBody(request)
+    if (typeof body?.prompt !== 'string' || !body.prompt.trim()) {
+      return error(422, 'INVALID_REQUEST', 'Опишите, что должен проверить сценарий.')
+    }
+    const { nodes, edges } = forTemplate(initialWorkflow)
+    return HttpResponse.json({ name: 'Черновик проверки проекта', schedule: null, nodes, edges, warnings: [] })
+  }),
   http.post(api('/workflows'), async ({ request }) => {
     const body = await readBody(request)
     const draft = body && readDraft(body)

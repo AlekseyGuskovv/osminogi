@@ -20,6 +20,7 @@
 | 16 | Threshold Preview | `feat/16-threshold-preview` | `f79fc85` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Предпросмотр без изменения графа или истории. |
 | 17 | Fix Dialog | `feat/17-fix-dialog` | `8e355e5` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Маскированный diff, подтверждение, новый снимок и повторный запуск. |
 | 18 | Finding History | `feat/18-finding-history` | `85aecc7` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Состояния found, resolved, returned со ссылками. |
-| 19 | Templates | `feat/19-templates-page` | HEAD ветки | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Готово к публикации | Каталог, публикация и копия без частных настроек. |
+| 19 | Templates | `feat/19-templates-page` | `5de215d` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Каталог, публикация и копия без частных настроек. |
+| 20 | AI Workflow Draft | `feat/20-ai-draft` | HEAD ветки | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Готово к публикации | Текст, редактируемый граф и отдельное сохранение. |
 
-Следующая задача — Task 20, AI-черновик.
+Следующая задача — Task 21, API импорта снимков.
