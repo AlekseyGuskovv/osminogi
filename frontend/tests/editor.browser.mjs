@@ -185,7 +185,9 @@ try {
     await waitFor(() => document.querySelector('[data-id="secrets-1"] .source'))
     const clickHandle = async selector => {
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
-      document.querySelector(selector).click()
+      const handle = document.querySelector(selector)
+      const rect = handle.getBoundingClientRect()
+      handle.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 }))
     }
     await clickHandle('[data-id="start"] .source')
     await clickHandle('[data-id="secrets-1"] .target')
@@ -291,6 +293,30 @@ try {
     }
     return 'Findings: fallback rule recommendation displayed'
   }, '/?view=runs&workflow=wf-1&run=run-5')
+
+  await evaluate(4175, async () => {
+    async function waitFor(condition) {
+      for (let i = 0; i < 80; i++) {
+        if (condition()) return
+        await new Promise(resolve => setTimeout(resolve, 50))
+      }
+      throw new Error('Comparison not loaded')
+    }
+    const comparison = document.querySelector.bind(document)
+    await waitFor(() => comparison('[data-comparison-group="existing"] [data-finding-id="F-dep"]'))
+    if (comparison('[data-comparison-group="resolved"] [data-finding-id="F-key"]')) {
+      throw new Error('Baseline should not record F-key as resolved')
+    }
+    await waitFor(() => comparison('option[value="run-1"]'))
+    const base = comparison('.garden-comparison select')
+    base.value = 'run-1'
+    base.dispatchEvent(new Event('change', { bubbles: true }))
+    await waitFor(() => comparison('[data-comparison-group="resolved"] [data-finding-id="F-key"]'))
+    if (!comparison('[data-comparison-group="existing"] [data-finding-id="F-dep"]')) {
+      throw new Error('Existing finding lost')
+    }
+    return 'Comparison: PR baseline and run-2 against run-1 display the correct categories'
+  }, '/?view=runs&workflow=wf-1&run=run-2')
 
   await evaluate(4176, async () => {
     const { installMocks } = await import('/src/mocks/worker.ts')

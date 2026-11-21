@@ -71,3 +71,11 @@
 .garden-severity[data-severity='critical'] { background: #513029; color: #ffd1c8; }
 .garden-severity[data-severity='high'] { background: #493d27; color: #ffe1a7; }
 .garden-run-accepted a { color: #a9e9c6; }
+.garden-comparison { margin-top: 28px; border-top: 1px solid #2b3931; }
+.garden-comparison label { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.garden-comparison-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
+.garden-comparison-grid > section { background: #121b16; border: 1px solid #2b3931; border-radius: 10px; padding: 10px; }
+.garden-comparison-grid h3 { margin: 6px 0 12px; }
+.garden-comparison-grid h3 span { color: #a8b9ae; }
+.garden-comparison-grid article + article { margin-top: 8px; }
+@media (max-width: 780px) { .garden-comparison-grid { grid-template-columns: 1fr; } }
