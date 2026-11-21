@@ -51,11 +51,9 @@ export function usePlayback(log: ReplayLog | undefined, edges: readonly Edge[], 
       const active = state.elapsed < state.duration
       if (active !== wasActive) setPlaying(active)
       wasActive = active
-      const running = state.active?.event.type === 'node.status' && state.active.event.data.status === 'running'
-      const motion = frameProgress(Math.min(state.elapsed, state.duration), Boolean(state.active?.edge), running && !state.active?.edge)
+      const motion = frameProgress(Math.min(state.elapsed, state.duration), Boolean(state.active?.edge))
       element.style.setProperty('--pulse-offset', String(8 - motion.travel * 108))
       element.style.setProperty('--pulse-trail', String(motion.trail))
-      element.style.setProperty('--pulse-glow', String(active || running ? motion.glow : 0))
       element.style.setProperty('--pulse-arrival', String(motion.arrival))
       element.style.setProperty('--pulse-alert', String(Math.max(0, 1 - state.elapsed / 370)))
       if (active) request = requestAnimationFrame(tick)
@@ -66,12 +64,18 @@ export function usePlayback(log: ReplayLog | undefined, edges: readonly Edge[], 
   }, [log, edges, paused, repetition, speed, surface, demo])
 
   const current = frame?.demo === demo && frame.repetition === repetition && frame.view.id === log?.base.id ? frame : undefined
+  const view = current?.view
+  const scanning = view && view.status !== 'succeeded' && view.status !== 'failed' &&
+    Object.values(view.nodes).some(node => node.status === 'running')
   return {
-    view: current?.view,
+    view,
     event: current?.event,
     edge: playing ? current?.edge : undefined,
     playing: Boolean(current && playing),
     paused,
+    speed,
+    repetition,
+    canPause: Boolean(current && (playing || scanning)),
     canReplay: Boolean(log?.events.length),
     partial: Boolean(log?.offset),
     toggle: () => setPaused(value => !value),

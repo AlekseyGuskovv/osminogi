@@ -24,6 +24,7 @@ import { ExplainableCI } from '../security-replay/ExplainableCI'
 import { PresentationMode } from '../security-replay/PresentationMode'
 import { usePresentation } from '../security-replay/usePresentation'
 import { branchChoice, branchOf } from '../security-replay/state'
+import { ScannerSweep } from '../security-replay/ScannerSweep'
 import { PlaybackControls } from '../security-replay/PlaybackControls'
 import { usePlayback } from '../security-replay/usePlayback'
 import { useRecordedRun } from '../security-replay/useRecordedRun'
@@ -76,15 +77,15 @@ function fittedViewport(workflow: EditableWorkflow, width: number, height: numbe
 }
 
 const statuses = { queued: 'В очереди', running: 'Выполняется', succeeded: 'Готово', failed: 'Ошибка', skipped: 'Пропущен' }
-type Block = Node<{ kind: NodeType; detail?: string; status?: keyof typeof statuses; pulse?: 'active' | 'arrival'; branch?: 'yes' | 'no'; critical?: boolean; highlighted?: boolean; ciPassed?: boolean; muted?: boolean }, 'workflow'>
+type Block = Node<{ kind: NodeType; detail?: string; status?: keyof typeof statuses; scanner?: { speed: PlaybackSpeed; paused: boolean; key: string }; arrival?: boolean; branch?: 'yes' | 'no'; critical?: boolean; highlighted?: boolean; ciPassed?: boolean; muted?: boolean }, 'workflow'>
 export type EditorProps = { workflowId?: string; ciRunId?: string; copiedTemplate?: boolean; explain?: boolean }
 
 const WorkflowBlock = memo(function WorkflowBlock({ data, selected }: NodeProps<Block>) {
   const { kind } = data
   const [label, description, tone] = labels[kind]
   return (
-    <div className={`garden-node ${selected ? 'selected' : ''}`} data-node-tone={tone} data-execution={data.status} data-pulse={data.pulse} data-critical={data.critical || undefined} data-branch={data.branch} data-ci-passed={data.ciPassed || undefined} data-explain-muted={data.muted || undefined} data-ci-highlight={data.highlighted || undefined}>
-      {data.pulse && <span aria-hidden="true" className="pulse-halo" />}
+    <div className={`garden-node ${selected ? 'selected' : ''}`} data-node-tone={tone} data-execution={data.status} data-arrival={data.arrival || undefined} data-critical={data.critical || undefined} data-branch={data.branch} data-ci-passed={data.ciPassed || undefined} data-explain-muted={data.muted || undefined} data-ci-highlight={data.highlighted || undefined}>
+      {data.scanner && <ScannerSweep key={data.scanner.key} speed={data.scanner.speed} paused={data.scanner.paused} />}
       {kind !== 'start' && <Handle type="target" position={Position.Left} aria-label="Вход" />}
       <span className="garden-icon"><Icon name={kind} size={17} /></span>
       <span className="garden-node-copy"><strong>{label}</strong><span>{data.detail ?? description}</span>
@@ -211,6 +212,11 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
   const runStatus = runView?.status ?? accepted?.status
   const visualFinished = playback.event?.type === 'run.finished' && !playback.playing
   const visualRun = !demoOpen && (!liveLog || visualFinished) ? runView : playback.view
+  const playbackView = playback.view
+  const scannerRunId = playbackView?.status === 'succeeded' || playbackView?.status === 'failed' ? undefined : playbackView?.id
+  const scanner = useMemo(() => scannerRunId ? {
+    speed: playback.speed, paused: playback.paused, key: `${scannerRunId}:${playback.repetition}`,
+  } : undefined, [scannerRunId, playback.speed, playback.paused, playback.repetition])
   const activeEvent = playback.event?.type === 'node.status' ? playback.event : undefined
   const pulseNode = activeEvent && (playback.playing || activeEvent.data.status === 'running') ? activeEvent.data.nodeId : undefined
   const factCi = demoOpen ? demo.run?.ci : runView?.ci
@@ -459,13 +465,14 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
   const nodes = useMemo<Block[]>(() => (workflow?.nodes ?? []).map(node => ({
     id: node.id, type: 'workflow', zIndex: 2, position: { x: node.x, y: node.y },
     data: { kind: node.type, detail: node.type === 'condition' ? conditionLabel(node.settings) : undefined, status: visualRun?.nodes[node.id]?.status,
-      pulse: playback.edge?.to === node.id ? 'arrival' : node.id === (playback.edge?.from ?? pulseNode) ? 'active' : undefined,
+      scanner: playbackView?.nodes[node.id]?.status === 'running' ? scanner : undefined,
+      arrival: playback.edge?.to === node.id,
       branch: branchOf(visualRun?.nodes[node.id]?.output) ?? visualRun?.nodes[node.id]?.branch,
       critical: node.id === pulseNode && node.id === criticalNode && Boolean(criticalFinding) && visualRun?.nodes[node.id]?.status === 'succeeded',
       highlighted: highlight?.nodeIds.includes(node.id),
       ciPassed: highlightRun?.ci.status === 'passed',
       muted: Boolean(explanationRun && highlight?.nodeIds.length && !highlight.nodeIds.includes(node.id)) }, selected: node.id === selectedId,
-  })), [workflow?.nodes, visualRun, highlight, selectedId, explanationRun, highlightRun, pulseNode, playback.edge, criticalNode, criticalFinding])
+  })), [workflow?.nodes, visualRun, highlight, selectedId, explanationRun, highlightRun, pulseNode, playbackView, scanner, playback.edge, criticalNode, criticalFinding])
   const edges = useMemo(() => (workflow?.edges ?? []).map(edge => {
     const highlighted = highlight?.edge?.from === edge.from && highlight.edge.branch === edge.branch
     const id = `${edge.from}:${edge.branch}`

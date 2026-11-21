@@ -825,7 +825,27 @@ try {
       }
       const surface = canvas.closest('.garden-canvas')
       const offset = () => Number(surface.style.getPropertyValue('--pulse-offset'))
-      await until(() => canvas.querySelector('[data-pulse="active"] .pulse-halo'))
+      const beam = await until(() => canvas.querySelector('.scanner-beam'))
+      const animation = beam.getAnimations()[0]
+      await until(() => animation.currentTime > 200)
+      for (const speed of [0.5, 2, 1]) {
+        const previous = animation.currentTime
+        setSpeed(speed)
+        await until(() => animation.playbackRate === speed)
+        if (animation.currentTime < previous || !beam.isConnected) throw new Error('Speed change reset the scanner')
+        const started = performance.now()
+        const current = animation.currentTime
+        await new Promise(resolve => setTimeout(resolve, 65))
+        const rate = (animation.currentTime - current) / (performance.now() - started)
+        if (Math.abs(rate - speed) > 0.4) throw new Error(`Unexpected scanner speed: ${rate}`)
+      }
+      find(panel, 'Пауза').click()
+      await until(() => !animation.pending && animation.playState === 'paused')
+      const scannerTime = animation.currentTime
+      await new Promise(resolve => setTimeout(resolve, 100))
+      if (animation.currentTime !== scannerTime) throw new Error('Scanner moved while paused')
+      find(panel, 'Продолжить').click()
+      await until(() => animation.currentTime > scannerTime)
       await until(() => canvas.querySelector('.pulse-edge-core') && offset() < 4 && offset() > -35)
       setSpeed(0.5)
       await new Promise(resolve => setTimeout(resolve, 40))
@@ -849,7 +869,8 @@ try {
       await until(() => offset() < frozen)
       setSpeed(1)
       find(panel, 'Повторить анимацию').click()
-      await until(() => canvas.querySelector('[data-execution="running"]'))
+      const replayBeam = await until(() => canvas.querySelector('.scanner-beam'))
+      if (replayBeam === beam || replayBeam.getAnimations()[0].currentTime > 500) throw new Error('Replay did not restart the scanner')
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
       await until(() => canvas.querySelector('.garden-ci-edge'))
       if (canvas.querySelectorAll('[data-ci-highlight]').length !== 2) throw new Error('Expected analyzer and condition')
@@ -875,7 +896,7 @@ try {
     }
   })
 
-  await evaluate(4175, async () => {
+  for (const reducedMotion of [false, true]) await evaluate(4175, async () => {
     const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
     async function until(predicate) {
       for (let i = 0; i < 260; i++) {
@@ -901,12 +922,23 @@ try {
     const select = controls.querySelector('select')
     select.value = '0.5'
     select.dispatchEvent(new Event('change', { bubbles: true }))
-    const active = await until(() => canvas.querySelector('[data-pulse="active"]'))
-    button(controls, 'Пауза').click()
+    const sweep = await until(() => canvas.querySelector('.scanner-sweep'))
+    const active = sweep.closest('.garden-node')
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
+    const animation = sweep.firstElementChild.getAnimations()[0]
+    const dragStart = animation?.currentTime
     const center = active.getBoundingClientRect()
     globalThis.dispatchDrag(JSON.stringify({ x: center.x + center.width / 2, y: center.y + center.height / 2 }))
     await until(() => globalThis.dragComplete && Math.abs(active.getBoundingClientRect().x - center.x) > 10)
-    if (getComputedStyle(active.querySelector('.pulse-halo')).pointerEvents !== 'none') throw new Error('Halo intercepts pointer events')
+    if (!reduced && animation.currentTime <= dragStart) throw new Error('Scanner stalled during drag')
+    button(controls, 'Пауза').click()
+    const scannerStyle = getComputedStyle(sweep)
+    if (scannerStyle.pointerEvents !== 'none' || scannerStyle.overflow !== 'hidden') {
+      throw new Error('Scanner must be clipped and ignore pointers')
+    }
+    if (reduced && (animation || getComputedStyle(sweep.firstElementChild).visibility !== 'hidden' || scannerStyle.boxShadow === 'none')) {
+      throw new Error('Reduced motion should show a static scanner indicator')
+    }
     const matrix = () => new DOMMatrix(getComputedStyle(viewport).transform)
     for (const scale of [0.5, 1, 1.5]) {
       const rect = pane.getBoundingClientRect()
@@ -916,7 +948,7 @@ try {
         bubbles: true, cancelable: true,
       }))
       await until(() => Math.abs(matrix().a - scale) < 0.015)
-      if (!active.isConnected || !active.querySelector('.pulse-halo')) throw new Error('Zoom removed the active halo')
+      if (!active.isConnected || !active.contains(sweep)) throw new Error('Zoom removed the active scanner')
     }
     const rect = pane.getBoundingClientRect()
     const initialPan = matrix().e
@@ -927,11 +959,68 @@ try {
     if (!active.isConnected || !canvas.isConnected) throw new Error('Interaction remounted the active graph')
     button(controls, 'Продолжить').click()
     const core = await until(() => canvas.querySelector('.pulse-edge-core'))
-    if (getComputedStyle(core).display !== 'none' || !canvas.querySelector('.pulse-edge-guide')) {
+    if ((getComputedStyle(core).display === 'none') !== reduced || !canvas.querySelector('.pulse-edge-guide')) {
       throw new Error('Reduced motion should leave only the static edge guide')
     }
-    return 'Live Pulse: drag, pan, zoom 50/100/150%, independent final result and reduced motion'
-  }, '/?workflow=wf-1', true)
+    return `Live Scanner Sweep: drag, pan, zoom 50/100/150%, independent final result (reduced motion: ${reduced})`
+  }, '/?workflow=wf-1', reducedMotion)
+
+  await evaluate(4175, async () => {
+    async function until(predicate) {
+      for (let i = 0; i < 90; i++) {
+        const result = predicate()
+        if (result) return result
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      throw new Error('Scanner fixture step timed out')
+    }
+    // Exercise all eight rendered types with an explicit test-only SSE stream.
+    let stream
+    window.EventSource = class {
+      constructor(url) { this.runId = url.split('/').at(-2); stream = this }
+      close() {}
+    }
+    let seq = 0
+    const send = (nodeId, status) => stream.onmessage({ data: JSON.stringify({
+      seq: ++seq, runId: stream.runId, type: 'node.status', at: new Date().toISOString(),
+      data: { nodeId, status },
+    }) })
+    const node = id => document.querySelector(`.react-flow__node[data-id="${id}"] .garden-node`)
+    const launch = await until(() => [...document.querySelectorAll('.garden-actions button')].find(
+      element => element.textContent.includes('Запустить'),
+    ))
+    const snapshot = document.querySelector('.garden-snapshot-select')
+    snapshot.value = 'pr-1'
+    snapshot.dispatchEvent(new Event('change', { bubbles: true }))
+    await until(() => !launch.disabled)
+    launch.click()
+    const speed = await until(() => stream && document.querySelector('.pulse-controls select'))
+    speed.value = '2'
+    speed.dispatchEvent(new Event('change', { bubbles: true }))
+
+    send('end', 'skipped')
+    await until(() => node('end')?.dataset.execution === 'skipped')
+    if (node('end').querySelector('.scanner-sweep')) throw new Error('Skipped Finish started scanning')
+    send('start', 'queued')
+    await until(() => node('start')?.dataset.execution === 'queued')
+    if (node('start').querySelector('.scanner-sweep')) throw new Error('Queued Start started scanning')
+
+    const colors = new Set()
+    for (const id of ['start', 'secret', 'deps', 'code', 'ai', 'gate', 'tg', 'end']) {
+      send(id, 'running')
+      const beam = await until(() => node(id)?.querySelector('.scanner-beam'))
+      const style = getComputedStyle(beam)
+      colors.add(getComputedStyle(beam, '::after').backgroundImage)
+      if (style.animationDuration !== '1.8s' || node(id).dataset.execution !== 'running') {
+        throw new Error(`Invalid scanner for ${id}`)
+      }
+      const status = id === 'tg' ? 'failed' : 'succeeded'
+      send(id, status)
+      await until(() => node(id).dataset.execution === status && !beam.isConnected)
+    }
+    if (colors.size !== 5) throw new Error('Scanner did not inherit the existing accents')
+    return 'Scanner Sweep: all eight node types, all five accents, queued/skipped and succeeded/failed'
+  }, '/?workflow=wf-1')
 
   await evaluate(4176, async () => {
     const { installMocks } = await import('/src/mocks/worker.ts')

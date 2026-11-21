@@ -16,7 +16,7 @@ export function PlaybackControls({ playback, speed, onSpeed }: {
         {speeds.map(value => <option key={value} value={value}>{names[value]}</option>)}
       </select>
     </label>
-    <button disabled={!playback.playing && !playback.paused} onClick={playback.toggle}>
+    <button disabled={!playback.canPause && !playback.paused} onClick={playback.toggle}>
       {playback.paused ? 'Продолжить' : 'Пауза'}
     </button>
     <button disabled={!playback.canReplay} onClick={playback.restart}>Повторить анимацию</button>

@@ -8,6 +8,7 @@ type Edge = WorkflowDraft['edges'][number]
 
 export const speeds = [0.5, 1, 2] as const
 export type PlaybackSpeed = typeof speeds[number]
+export const scannerDuration = 1800
 export const historyLimit = 160
 
 export type ReplayLog = { base: RunView; events: readonly RunEvent[]; offset: number }
@@ -32,17 +33,14 @@ export function advanceTime(elapsed: number, delta: number, speed: PlaybackSpeed
 export function frameDuration(event: RunEvent, travels: boolean) {
   if (event.type === 'run.finished') return 650
   if (event.type !== 'node.status' || event.data.status === 'skipped' || event.data.status === 'queued') return 0
-  return travels ? 2050 : event.data.status === 'running' ? 800 : 900
+  return travels ? 2050 : event.data.status === 'running' ? scannerDuration : 900
 }
 
-export function frameProgress(elapsed: number, travels: boolean, running: boolean) {
+export function frameProgress(elapsed: number, travels: boolean) {
   const travel = Math.max(0, Math.min(1, (elapsed - 550) / 1250))
-  const rise = Math.min(1, elapsed / 300)
-  const fade = Math.max(0, Math.min(1, ((travels ? 2050 : 900) - elapsed) / 480))
   return {
     travel,
     trail: travels && elapsed >= 550 ? Math.min(1, (elapsed - 550) / 110, Math.max(0, (2050 - elapsed) / 250)) : 0,
-    glow: running ? rise * (.92 + .08 * Math.cos(elapsed / 180)) : fade,
     arrival: travels ? Math.max(0, 1 - Math.abs(elapsed - 1800) / 250) : 0,
   }
 }
