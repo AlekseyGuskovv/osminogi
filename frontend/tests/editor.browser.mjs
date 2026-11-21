@@ -468,7 +468,7 @@ try {
   }, '/?view=templates&workflow=wf-1')
   await until(async () => {
     const tabs = await (await fetch('http://127.0.0.1:' + debug + '/json/list')).json()
-    return tabs.some(tab => tab.url.endsWith('?workflow=wf-3'))
+    return tabs.some(tab => tab.url.endsWith('?workflow=wf-3&setup=1'))
   })
   await evaluate(4175, async () => {
     const { getJson } = await import('/src/api.ts')
@@ -638,6 +638,42 @@ try {
     }
     return 'Telegram: masked input, cleared token, metadata-only storage and CONNECTION_REQUIRED passed'
   })
+
+  await evaluate(4175, async () => {
+    async function waitFor(predicate) {
+      for (let i = 0; i < 100; i++) {
+        const value = predicate()
+        if (value) return value
+        await new Promise(resolve => setTimeout(resolve, 50))
+      }
+      throw new Error('Copy setup did not reach expected state')
+    }
+    const setup = await waitFor(() => document.querySelector('.garden-copy-setup'))
+    const snapshot = document.querySelector('.garden-snapshot-select')
+    if (snapshot.value) throw new Error('Snapshot choice should be explicit')
+    snapshot.value = 'pr-3'
+    snapshot.dispatchEvent(new Event('change', { bubbles: true }))
+    setup.querySelector('button').click()
+    const connection = await waitFor(() => document.querySelector('.garden-connection-select option[value="team-demo"]')?.parentElement)
+    if (connection.value) throw new Error('Telegram channel was auto-selected')
+    connection.value = 'team-demo'
+    connection.dispatchEvent(new Event('change', { bubbles: true }))
+    await waitFor(() => setup.textContent.includes('Сохраните'))
+    const action = word => [...document.querySelectorAll('.garden-actions button')].find(item => item.textContent.includes(word))
+    action('Сохранить').click()
+    await waitFor(() => document.querySelector('[role="status"]')?.textContent.includes('ревизия 2'))
+    action('Запустить').click()
+    await waitFor(() => document.querySelector('[data-run-status="succeeded"]'))
+    const { getJson } = await import('/src/api.ts')
+    const runId = document.querySelector('.garden-run-accepted a').textContent
+    const [copy, original, run] = await Promise.all([getJson('/workflows/wf-3'), getJson('/workflows/wf-1'), getJson('/runs/' + runId)])
+    const channelOf = workflow => workflow.nodes.find(node => node.type === 'telegram').settings.channelId
+    if (copy.snapshotId !== 'pr-3' || channelOf(copy) !== 'team-demo' || channelOf(original) === 'team-demo' ||
+      original.snapshotId === 'pr-3' || run.snapshotId !== 'pr-3' || run.delivery !== 'sent') {
+      throw new Error('Copy did not use independently configured snapshot and channel')
+    }
+    return 'Template setup: explicit snapshot and Telegram selection, separate save and successful delivery'
+  }, '/?workflow=wf-3&setup=1')
 
   await evaluate(4176, async () => {
     const { installMocks } = await import('/src/mocks/worker.ts')

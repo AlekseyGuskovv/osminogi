@@ -31,7 +31,7 @@ const labels: Record<NodeType, [string, string]> = {
 
 const statuses = { queued: 'В очереди', running: 'Выполняется', succeeded: 'Готово', failed: 'Ошибка', skipped: 'Пропущен' }
 type Block = Node<{ kind: NodeType; status?: keyof typeof statuses; highlighted?: boolean }, 'workflow'>
-export type EditorProps = { workflowId?: string; ciRunId?: string }
+export type EditorProps = { workflowId?: string; ciRunId?: string; copiedTemplate?: boolean }
 
 function WorkflowBlock({ data, selected }: NodeProps<Block>) {
   const { kind } = data
@@ -51,7 +51,7 @@ function WorkflowBlock({ data, selected }: NodeProps<Block>) {
 
 const flowNodeTypes = { workflow: WorkflowBlock }
 
-export function WorkflowEditor({ workflowId, ciRunId }: EditorProps) {
+export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorProps) {
   const [workflow, setWorkflow] = useState<EditableWorkflow>()
   const [ciRun, setCiRun] = useState<Run>()
   const [snapshots, setSnapshots] = useState<SnapshotRef[]>([])
@@ -67,6 +67,7 @@ export function WorkflowEditor({ workflowId, ciRunId }: EditorProps) {
   const [notice, setNotice] = useState<{ text: string; error?: boolean }>()
   const activeNode = workflow?.nodes.find(node => node.id === selectedId)
   const activeNodeView = runView?.nodes[selectedId]
+  const missingChannel = workflow?.nodes.find(node => node.type === 'telegram' && !node.settings.channelId)
   const highlight = ciRun?.workflowId === workflowId && ciRun ? getHighlight(ciRun.ci) : undefined
 
   useEffect(() => {
@@ -192,6 +193,14 @@ export function WorkflowEditor({ workflowId, ciRunId }: EditorProps) {
           <button className="garden-primary" disabled={pending || !workflow.id || !snapshotId} onClick={() => void submit('run')}>▷ Запустить</button>
         </div>}
       </section>
+      {copiedTemplate && workflow && <section className="garden-notice garden-copy-setup" aria-label="Настройка копии">
+        <strong>Настройте свою копию</strong>
+        {!snapshotId && <span>Выберите снимок проекта.</span>}
+        {missingChannel && <button type="button" onClick={() => setSelectedId(missingChannel.id)}>
+          Выбрать канал Telegram
+        </button>}
+        {snapshotId && !missingChannel && <span>Сохраните выбранные настройки.</span>}
+      </section>}
       {ciRun && highlight && <p className="garden-notice">
         <a href={runsUrl(ciRun.workflowId, ciRun.id)}>{ciRun.id}</a> · CI {ciRun.ci.status}
         {highlight.findingId && ` · ${highlight.findingId}`}

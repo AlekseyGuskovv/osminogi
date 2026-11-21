@@ -24,6 +24,7 @@
 | 20 | AI Workflow Draft | `feat/20-ai-draft` | `b86cd2d` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Текст, редактируемый граф и отдельное сохранение. |
 | 21 | Snapshot Import API | `feat/21-snapshot-import-api` | `0599d14` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Multipart, 201/413/422, снимки доступны в GET. |
 | 22 | Snapshot Picker | `feat/22-snapshot-picker` | `7c44352` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Импорт ZIP, новый выбор и сохранение прежнего значения при ошибке. |
-| 23 | Telegram Connections | `feat/23-telegram-connections` | HEAD ветки | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Готово к публикации | Метаданные подключений, поле пароля и channelId в графе. |
+| 23 | Telegram Connections | `feat/23-telegram-connections` | `f8727b2` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Метаданные подключений, поле пароля и channelId в графе. |
+| 24 | Template Copy | `feat/24-template-copy` | HEAD ветки | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Готово к публикации | Явный выбор своего снимка и канала для копии. |
 
-Следующая задача — Task 24, настройка копии шаблона.
+Следующая задача — Task 25, причина CI.

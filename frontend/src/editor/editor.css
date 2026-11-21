@@ -111,3 +111,5 @@
 .garden-connection-picker details { margin-top: 9px; }
 .garden-connection-picker summary { color: #a9e9c6; cursor: pointer; font-size: 12px; }
 .garden-connection-picker form { display: grid; gap: 6px; margin-top: 6px; }
+.garden-copy-setup { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.garden-copy-setup span { color: #d8e8dc; }

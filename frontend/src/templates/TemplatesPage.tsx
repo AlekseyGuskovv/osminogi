@@ -54,10 +54,10 @@ export function TemplatesPage({ workflowId }: { workflowId: string }) {
     })
   }
 
-  function copy(id: string) {
+  function openCopiedTemplate(templateId: string) {
     void request(async () => {
-      const workflow = await postJson<Workflow>(`/templates/${encodeURIComponent(id)}/copy`, {})
-      window.location.assign(`?${new URLSearchParams({ workflow: workflow.id })}`)
+      const workflow = await postJson<Workflow>(`/templates/${encodeURIComponent(templateId)}/copy`, {})
+      window.location.assign(`?${new URLSearchParams({ workflow: workflow.id, setup: '1' })}`)
     })
   }
 
@@ -78,7 +78,7 @@ export function TemplatesPage({ workflowId }: { workflowId: string }) {
           {templates.map(template => <article className="garden-finding" key={template.id} data-template-id={template.id}>
             <h2>{template.name}</h2><p>{template.description}</p>
             <p className="garden-meta">{template.workflow.nodes.length} блоков · ревизия {template.workflow.revision}</p>
-            <button disabled={pending} onClick={() => copy(template.id)}>Создать копию</button>
+            <button disabled={pending} onClick={() => openCopiedTemplate(template.id)}>Создать копию</button>
           </article>)}
         </div>
         <form className="garden-template-form" onSubmit={event => { event.preventDefault(); publish() }}>
