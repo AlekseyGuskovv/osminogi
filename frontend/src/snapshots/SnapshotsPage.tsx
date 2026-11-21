@@ -120,7 +120,7 @@ function SnapshotWorkspace({ snapshot, library, workflows, initialWorkflowId, on
     setLaunchError('')
     try {
       const run = await start(workflowId, { trigger: 'manual', snapshotId: snapshot.id, baseSnapshotId: comparison.baseSnapshotId })
-      if (run) window.location.assign(runsUrl(workflowId, run.id))
+      if (run) window.location.assign(runsUrl(workflowId, run.id, { showOutcome: true }))
     } catch (cause) {
       setLaunchError(errorMessage(cause, 'Не удалось запустить проверку.'))
     }

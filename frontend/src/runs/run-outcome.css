@@ -1,0 +1,20 @@
+.run-outcome { --outcome-color: var(--accent); width: min(490px, calc(100% - 24px)); }
+.run-outcome[data-outcome='danger'], .run-outcome[data-outcome='error'] { --outcome-color: var(--danger); }
+.run-outcome[data-outcome='warning'] { --outcome-color: var(--warning); }
+.run-outcome header { display: flex; align-items: center; gap: 11px; }
+.run-outcome header h2 { margin: 0; }
+.run-outcome-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 39px;
+  height: 39px;
+  border-radius: 9px;
+  color: var(--outcome-color);
+  background: color-mix(in srgb, var(--outcome-color) 16%, var(--panel));
+}
+.run-outcome p { margin: 10px 0; overflow-wrap: anywhere; }
+.run-outcome-issues { list-style: none; background: var(--surface); border-radius: 8px; margin: 12px 0; padding: 4px 12px; }
+.run-outcome-issues li { display: grid; gap: 3px; padding: 8px 0; overflow-wrap: anywhere; }
+.run-outcome-issues li + li { border-top: 1px solid var(--border); }
+.run-outcome-issues span { font-size: 12px; color: var(--muted); }
+.run-outcome .garden-dialog-close { flex-wrap: wrap; gap: 8px; }

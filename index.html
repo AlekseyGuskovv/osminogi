@@ -53,6 +53,10 @@
 <section class="panel results" aria-labelledby="resultsTitle"><div class="bar"><h2 id="resultsTitle">Результаты проверки</h2><span id="ci"></span></div><div class="results-body" id="results"></div></section>
 </main>
 <dialog id="detail"><article id="detailBody"></article><form method="dialog"><button>Закрыть</button></form></dialog>
+<dialog id="runOutcome" aria-labelledby="runOutcomeTitle" aria-describedby="runOutcomeSummary">
+  <h2 id="runOutcomeTitle"></h2><p id="runOutcomeSummary"></p><ul id="runOutcomeIssues" hidden></ul>
+  <form class="row" method="dialog"><button value="results">К результатам</button><button>Закрыть</button></form>
+</dialog>
 <dialog id="templateShare" aria-labelledby="templateShareTitle">
   <article><h2 id="templateShareTitle">Поделиться шаблоном</h2>
     <p>Получателю нужен доступ к этому экземпляру Cyber Garden.</p>
@@ -528,6 +532,45 @@ function runTechnicalErrors(entry) {
   if (entry.ci==='error' && !errors.length) errors.push({stage:'analysis',message:'Проверка завершилась с технической ошибкой.'});
   return errors;
 }
+const runOutcomeDialog = document.getElementById('runOutcome');
+function showRunOutcome(entry) {
+  const errors = runTechnicalErrors(entry);
+  const critical = entry.found.filter(item=>item.severity==='critical');
+  let title, summary;
+  if (entry.ci==='error') {
+    title = 'Проверка завершилась с ошибкой';
+    summary = 'Не удалось завершить выполнение сценария.';
+  } else if (entry.ci==='failed') {
+    title = 'Проверка не пройдена';
+    summary = 'Найдены критические риски.';
+  } else if (entry.ci==='unchecked') {
+    title = 'Нет результата анализа';
+    summary = 'Запустите сценарий с блоком анализа.';
+  } else if (errors.length) {
+    title = 'Анализ пройден с замечаниями';
+    summary = 'Некоторые шаги завершились ошибкой.';
+  } else {
+    title = 'Проверка пройдена';
+    summary = entry.found.length ? 'Критических рисков нет. Находок: '+entry.found.length+'.' : 'Находок нет.';
+  }
+  $('runOutcomeTitle').textContent = title;
+  $('runOutcomeSummary').textContent = summary;
+  const details = $('runOutcomeIssues');
+  const findings = critical.map(item=>item.title+' · '+item.file+':'+item.line);
+  const messages = errors.map(error=>error.message);
+  const issues = entry.ci==='failed' ? [...findings,...messages] : [...messages,...findings];
+  const visible = issues.slice(0,3);
+  if (issues.length > 3) visible.push('Ещё '+(issues.length-3)+' в результатах.');
+  details.replaceChildren(...visible.map(issue=>{
+    const item = document.createElement('li'); item.textContent = issue; return item;
+  }));
+  details.hidden = !issues.length;
+  runOutcomeDialog.returnValue = '';
+  runOutcomeDialog.showModal();
+}
+runOutcomeDialog.onclose = event => {
+  if (event.currentTarget.returnValue==='results') $('results').scrollIntoView({block:'start'});
+};
 async function run() {
   if (busy || !state.snapshotId) return;
   try { validate(); } catch (error) { message(error.message,true); return; }
@@ -545,6 +588,7 @@ async function run() {
     if (result.ci==='error') message('Проверка не завершена. Подробности в разделе «Технические сбои».',true);
     else if (runTechnicalErrors(entry).length) message('Анализ завершён. Подробности в разделе «Технические сбои».',true);
     else message('Проверка завершена. Результаты под сценарием.');
+    showRunOutcome(entry);
   } catch (error) {
     message(error.message,true);
   } finally {

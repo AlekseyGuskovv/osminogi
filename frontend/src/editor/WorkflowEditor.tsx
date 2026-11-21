@@ -7,6 +7,8 @@ import type { SnapshotRef } from '../api'
 import { getHighlight } from '../runs/ci'
 import type { Run } from '../runs/types'
 import { runsUrl } from '../runs/navigation'
+import { RunOutcomeDialog } from '../runs/RunOutcomeDialog'
+import { isRunFinished } from '../runs/outcome'
 import { useStartRun } from '../runs/useRun'
 import { nodeTypes } from '../workflow'
 import type { NodeType, Workflow } from '../workflow'
@@ -242,7 +244,9 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain, r
   const { start, starting, accepted, clearAccepted } = useStartRun()
   const pending = saving || starting
   const { view: runView, log: liveLog } = useRecordedRun(accepted?.id)
-  const { log: historicalLog } = useRecordedRun(!mock && demoOpen && (longDemo || demoStage === 0) ? historicalRun?.id : undefined)
+  const { view: historicalView, log: historicalLog } = useRecordedRun(!mock && demoOpen && (longDemo || demoStage === 0) ? historicalRun?.id : undefined)
+  const trainingResult = demoOpen && longDemo && training
+    ? historicalView?.result ?? (isRunFinished(training.status) ? training : undefined) : undefined
   const [speed, setSpeed] = useState<PlaybackSpeed>(replay && !mock ? 2 : 1)
   const playbackLog = demoOpen
     ? mock ? longDemo ? longStarted ? longDemoLogs[scenario] : undefined : reconstructed : historicalLog
@@ -679,7 +683,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain, r
       </p>}
       {notice && <p className={`garden-notice ${notice.error ? 'error' : ''}`} role={notice.error ? 'alert' : 'status'}>{notice.text}</p>}
       {accepted && workflow?.id && <section className="garden-run-accepted" aria-label="Текущий запуск">
-        <a href={runsUrl(workflow.id, accepted.id)}>{accepted.id}</a> <span role="status" data-run-status={runStatus}>{{
+        <a href={runsUrl(workflow.id, accepted.id, { showOutcome: !runView?.result })}>{accepted.id}</a> <span role="status" data-run-status={runStatus}>{{
           queued: 'Запуск поставлен в очередь', running: 'Проверка выполняется', succeeded: 'Проверка завершена', failed: 'Проверка завершилась ошибкой',
         }[runStatus ?? 'queued']}</span>
         {runView?.ciStatus && <span className={visualFinished ? 'pulse-ci-result' : undefined} data-ci-status={runView.ciStatus}>CI {runView.ciStatus.toUpperCase()}</span>}
@@ -689,6 +693,10 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain, r
         {criticalFinding && <a href={runsUrl(workflow.id, accepted.id)}>Находка {criticalFinding}</a>}
         <PlaybackControls playback={playback} speed={speed} onSpeed={setSpeed} />
       </section>}
+      {runView?.result && <RunOutcomeDialog key={runView.result.id} run={runView.result}
+        reportHref={runsUrl(runView.result.workflowId, runView.result.id)} />}
+      {trainingResult && <RunOutcomeDialog key={trainingResult.id} run={trainingResult}
+        reportHref={runsUrl(trainingResult.workflowId, trainingResult.id)} />}
       {loading && <p className="garden-notice" role="status">Загрузка сценария…</p>}
       {!loading && !workflow && <button className="garden-retry" onClick={() => { setLoading(true); setNotice(undefined); setLoadAttempt(attempt => attempt + 1) }}>Повторить</button>}
       {demoOpen && (longDemo ? <LongDemoPanel scenario={scenario} started={longStarted} graph={training?.graph}

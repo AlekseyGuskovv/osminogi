@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { getJson, postJson } from '../api.ts'
 import { subscribeRun } from './events.ts'
-import type { Ci } from './types.ts'
+import type { Ci, Run } from './types.ts'
 import type { CiStatus, RunEvent, RunStatus } from './events.ts'
+import { isRunFinished } from './outcome.ts'
 
 export type RunRequest = {
   trigger: 'manual' | 'schedule' | 'ci'
@@ -46,16 +47,10 @@ export type RunView = {
   status: RunStatus
   ciStatus?: CiStatus
   ci?: Ci
+  result?: Run
   nodes: Record<string, NodeView>
   lastNodeEvent?: { id: string; seq: number; output?: unknown }
 }
-type RunSummary = {
-  id: string
-  status: RunStatus
-  ci: Ci
-  steps: ({ nodeId: string } & NodeView)[]
-}
-
 export function applyRunEvent(view: RunView, event: RunEvent): RunView {
   if (event.runId !== view.id) return view
   if (event.type === 'run.status') return { ...view, status: event.data.status }
@@ -72,16 +67,28 @@ export function useRunStatus(runId?: string, onEvent?: (event: RunEvent) => void
     if (!runId) return
     const id = runId
     let active = true
+    let retry: ReturnType<typeof setTimeout> | undefined
+    let attempts = 0
     async function refresh() {
-      const run = await getJson<RunSummary>(`/runs/${encodeURIComponent(id)}`)
+      const run = await getJson<Run>(`/runs/${encodeURIComponent(id)}`)
+      const finished = isRunFinished(run.status)
       if (active) setView(current => {
         const nodes = { ...(current?.id === id ? current.nodes : undefined) }
         for (const { nodeId, ...step } of run.steps) {
           nodes[nodeId] = { ...nodes[nodeId], ...step }
         }
-        return { id, status: run.status, ciStatus: run.ci.status, ci: run.ci, nodes }
+        return { id, status: run.status, ciStatus: run.ci.status, ci: run.ci, nodes, result: finished ? run : undefined }
       })
-      return run.status === 'queued' || run.status === 'running'
+      return !finished
+    }
+
+    async function refreshFinished() {
+      try {
+        if (!await refresh()) return
+      } catch {
+        // The completed report may be temporarily unavailable while reconnecting.
+      }
+      if (active && ++attempts < 4) retry = setTimeout(() => void refreshFinished(), 1250)
     }
 
     const unsubscribe = subscribeRun(id, async event => {
@@ -90,10 +97,11 @@ export function useRunStatus(runId?: string, onEvent?: (event: RunEvent) => void
         current?.id === id ? current : { id, status: 'queued', nodes: {} },
         event,
       ))
-      if (event.type === 'run.finished') await refresh()
+      if (event.type === 'run.finished') await refreshFinished()
     }, refresh)
     return () => {
       active = false
+      clearTimeout(retry)
       unsubscribe()
     }
   }, [runId, onEvent])

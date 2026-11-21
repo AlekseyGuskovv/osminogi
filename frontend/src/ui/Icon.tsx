@@ -8,6 +8,7 @@ const paths = {
   settings: 'M4 6h5m4 0h7M4 12h10m4 0h2M4 18h2m4 0h10M9 4h4v4H9zm5 6h4v4h-4zm-8 6h4v4H6z',
   start: 'm8 5 12 7-12 7z',
   finish: 'M5 12l4 4L19 6',
+  alert: 'M12 3 2 20h20L12 3Zm0 6v4m0 3v1',
   secrets: 'M14 10a5 5 0 1 1 5 5l-5 5h-3v-3l5-5',
   sca: 'm12 3 9 5v8l-9 5-9-5V8l9-5Zm-9 5 9 5 9-5m-9 5v8m-5-10 9-5',
   sast: 'm8 7-5 5 5 5m8-10 5 5-5 5m-3-12-2 14',
