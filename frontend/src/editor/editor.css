@@ -257,6 +257,9 @@
 .garden-template-empty p { margin: 0 auto 19px; max-width: 400px; color: var(--muted); }
 .garden-dialog .garden-template-form { border: 0; padding: 0; max-width: none; }
 .garden-template-dialog-actions { display: flex; gap: 8px; justify-content: end; padding-top: 9px; border-top: 1px solid var(--border); }
+.garden-template-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.garden-template-actions a { color: var(--info); }
+.garden-template-link { display: grid; gap: 5px; margin: 12px 0; }
 .garden-template-grid { grid-template-columns: repeat(auto-fill,minmax(min(276px,100%),1fr)); }
 .garden-template-grid .garden-finding { display: grid; justify-items: start; grid-template-rows: auto auto 1fr auto auto; min-height: 175px; }
 .garden-run-metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; margin: 0 0 16px; }

@@ -61,6 +61,14 @@ export function importSnapshot(file: File): Promise<SnapshotRef> {
   return requestJson<SnapshotRef>('/snapshots/import', { method: 'POST', body })
 }
 
+export function importTemplateYaml<T>(file: File): Promise<T> {
+  return requestJson<T>('/templates/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/yaml' },
+    body: file,
+  })
+}
+
 const postErrorMessages: Partial<Record<number, string>> = {
   400: 'Некорректный запрос.',
   409: 'Запрос конфликтует с текущим состоянием ресурса.',

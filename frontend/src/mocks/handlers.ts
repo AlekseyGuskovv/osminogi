@@ -1,4 +1,5 @@
 import { http, HttpResponse } from 'msw'
+import type { FindingRecord, FindingReview, FindingsOverview } from '../findings/types'
 import type { Template } from '../templates/types'
 import { nodeTypes } from '../workflow'
 import type { Branch, ConnectionRef, Workflow, WorkflowDraft, WorkflowDraftResult } from '../workflow'
@@ -35,6 +36,14 @@ function storeWorkflow(workflow: Workflow) {
 }
 const runStorageKey = 'cyber-garden.mock.runs.v2'
 const runs = new Map<string, StoredRun>()
+const reviewsStorageKey = 'cyber-garden.mock.finding-reviews.v1'
+const reviews = new Map<string, FindingReview>()
+try {
+  const cached = globalThis.localStorage?.getItem(reviewsStorageKey)
+  if (cached) for (const [key, review] of JSON.parse(cached) as [string, FindingReview][]) reviews.set(key, review)
+} catch {
+  // Keep reviews available in memory if storage is blocked.
+}
 const templateStorageKey = 'cyber-garden.mock.templates.v2'
 const templates = new Map<string, Template>()
 try {
@@ -236,6 +245,35 @@ function runResponse({ result, readyAt }: StoredRun): Run {
   }
 }
 
+function completedFindingRuns(workflowId: string) {
+  return [...runs.values()].reverse().filter(run => run.result.workflowId === workflowId &&
+    Date.now() >= run.readyAt && (run.result.ci.status === 'passed' || run.result.ci.status === 'failed'))
+}
+
+function overviewFor(workflowId: string): FindingsOverview {
+  const completed = completedFindingRuns(workflowId)
+  const latest = completed[0]
+  const records = new Map<string, FindingRecord>()
+  for (const run of completed) {
+    for (const finding of run.result.findings) {
+      const record = records.get(finding.id)
+      if (record) {
+        record.firstSeenAt = run.at
+        record.occurrences++
+        continue
+      }
+      records.set(finding.id, {
+        finding, category: finding.category ?? finding.ruleId.split('-')[0],
+        state: run === latest ? 'open' : run.analyzers === latest.analyzers ? 'resolved' : 'unverified',
+        firstSeenAt: run.at, lastSeenAt: run.at, lastSeenRunId: run.result.id, occurrences: 1,
+        recommendation: run.result.recommendations.find(item => item.findingId === finding.id) ?? null,
+        review: reviews.get(`${workflowId}/${finding.id}`) ?? null,
+      })
+    }
+  }
+  return { latestRunId: latest?.result.id ?? null, findings: [...records.values()] }
+}
+
 function scenarioFor(request: Request): RunScenario | undefined {
   const scenario = new URL(request.url).searchParams.get('scenario')
   switch (scenario) {
@@ -287,6 +325,10 @@ export const handlers = [
     return HttpResponse.json(connection, { status: 201 })
   }),
   http.get(api('/templates'), () => HttpResponse.json([...templates.values()])),
+  http.get(api('/templates/:templateId'), ({ params }) => {
+    const template = templates.get(String(params.templateId))
+    return template ? HttpResponse.json(template) : notFound('Шаблон не найден.')
+  }),
   http.post(api('/templates'), async ({ request }) => {
     const body = await readBody(request)
     const workflow = typeof body?.workflowId === 'string' ? workflows.get(body.workflowId) : undefined
@@ -407,6 +449,37 @@ export const handlers = [
     return HttpResponse.json(
       [...runs.values()].reverse().filter(run => run.result.workflowId === id).map(runResponse),
     )
+  }),
+  http.get(api('/workflows/:workflowId/findings'), ({ params }) => {
+    const workflowId = String(params.workflowId)
+    if (!workflows.has(workflowId)) return notFound('Сценарий не найден.')
+    return HttpResponse.json(overviewFor(workflowId))
+  }),
+  http.post(api('/workflows/:workflowId/findings/:findingId/review'), async ({ params, request }) => {
+    const workflowId = String(params.workflowId)
+    const findingId = String(params.findingId)
+    if (!workflows.has(workflowId)) return notFound('Сценарий не найден.')
+    const body = await readBody(request)
+    const status = body?.status
+    const reason = body?.reason === undefined ? '' : body.reason
+    if ((status !== 'unreviewed' && status !== 'in_progress' && status !== 'false_positive') ||
+      typeof reason !== 'string' || reason.trim().length > 500) {
+      return error(422, 'INVALID_FINDING_REVIEW', 'Проверьте статус и причину.')
+    }
+    if (status === 'false_positive' && !reason.trim()) {
+      return error(422, 'FINDING_REVIEW_REASON_REQUIRED', 'Укажите, почему это ложное срабатывание.')
+    }
+    if (!completedFindingRuns(workflowId).some(run => run.result.findings.some(finding => finding.id === findingId))) {
+      return notFound('Находка не найдена в этом сценарии.')
+    }
+    const review: FindingReview = { findingId, status, reason: reason.trim(), updatedAt: new Date().toISOString() }
+    reviews.set(`${workflowId}/${findingId}`, review)
+    try {
+      globalThis.localStorage?.setItem(reviewsStorageKey, JSON.stringify([...reviews]))
+    } catch {
+      // Keep this review available in memory if storage is blocked.
+    }
+    return HttpResponse.json(review)
   }),
   http.get(api('/workflows/:workflowId/findings/:findingId/history'), ({ params }) => {
     const workflowId = String(params.workflowId)

@@ -27,6 +27,7 @@ from .project_import import (
     ArchiveTooLarge, MAX_UPLOAD, ORGANIZER_COMMIT, ORGANIZER_REPOSITORY, read_organizer_project, read_project,
 )
 from .store import Store
+from .template_yaml import MAX_TEMPLATE_BYTES, YAML_MEDIA_TYPES, import_template, portable_graph
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -387,6 +388,16 @@ class Handler(BaseHTTPRequestHandler):
             if not self.path.startswith("/api/v1/"):
                 self.reply(404, {"message": "Маршрут не найден."})
                 return
+            if path == "/templates/import":
+                if self.headers.get_content_type() not in YAML_MEDIA_TYPES:
+                    raise ApiError(415, "TEMPLATE_MEDIA_TYPE", "Отправьте YAML-файл сценария.")
+                try:
+                    imported = import_template(self.read_body(MAX_TEMPLATE_BYTES))
+                except ArchiveTooLarge as error:
+                    raise ApiError(413, "TEMPLATE_TOO_LARGE", "Размер YAML не должен превышать 128 КБ.") from error
+                workflow = save_workflow(imported)
+                self.reply(201, workflow if demo else to_workflow(workflow))
+                return
             if self.headers.get_content_type() != "application/json":
                 raise ValueError("Отправьте JSON.")
             data = json.loads(self.read_body(65536))
@@ -427,9 +438,7 @@ class Handler(BaseHTTPRequestHandler):
                 description = data.get("description", "")
                 if not workflow or not isinstance(description, str) or len(description) > 500:
                     raise ValueError("Сохраните сценарий и задайте описание до 500 символов.")
-                graph = workflow["graph"]
-                graph["nodes"] = [{k: v for k, v in node.items() if k not in {"schedule", "channelId"}}
-                                  for node in graph["nodes"]]
+                graph = portable_graph(workflow["graph"])
                 name = data.get("name", workflow["name"])
                 if not isinstance(name, str) or not 0 < len(name.strip()) <= 100:
                     raise ValueError("Укажите название шаблона.")
@@ -441,11 +450,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not template:
                     self.reply(404, {"message": "Шаблон не найден."})
                 else:
-                    graph = template["graph"]
-                    if not demo:
-                        for node in graph["nodes"]:
-                            if node["type"] == "telegram":
-                                node["channelId"] = None
+                    graph = portable_graph(template["graph"])
                     copied = save_workflow({"name": template["name"], "graph": graph})
                     if not demo:
                         copied = to_workflow(copied)

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { getJson, postJson } from '../api'
+import { apiUrl, getJson, importTemplateYaml, postJson } from '../api'
 import { Icon } from '../ui/Icon'
 import { WorkspaceNav } from '../ui/WorkspaceNav'
 import type { Workflow } from '../workflow'
 import type { Template } from './types'
 
-export function TemplatesPage({ workflowId }: { workflowId: string }) {
+export function TemplatesPage({ workflowId, sharedTemplateId }: { workflowId: string; sharedTemplateId?: string }) {
   const [templates, setTemplates] = useState<Template[]>()
   const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [selectedWorkflow, setSelectedWorkflow] = useState(workflowId)
@@ -16,7 +16,12 @@ export function TemplatesPage({ workflowId }: { workflowId: string }) {
   const [attempt, setAttempt] = useState(0)
   const inFlight = useRef(false)
   const dialog = useRef<HTMLDialogElement>(null)
+  const upload = useRef<HTMLInputElement>(null)
+  const shareDialog = useRef<HTMLDialogElement>(null)
+  const shareField = useRef<HTMLInputElement>(null)
   const [publishing, setPublishing] = useState(false)
+  const [shareUrl, setShareUrl] = useState('')
+  const [shareStatus, setShareStatus] = useState('')
 
   function showPublishForm() {
     setError('')
@@ -26,7 +31,10 @@ export function TemplatesPage({ workflowId }: { workflowId: string }) {
 
   useEffect(() => {
     let active = true
-    void Promise.all([getJson<Template[]>('/templates'), getJson<Workflow[]>('/workflows')])
+    const catalog = sharedTemplateId
+      ? getJson<Template>('/templates/' + encodeURIComponent(sharedTemplateId)).then(template => [template])
+      : getJson<Template[]>('/templates')
+    void Promise.all([catalog, getJson<Workflow[]>('/workflows')])
       .then(([catalog, available]) => {
         if (!active) return
         setTemplates(catalog)
@@ -36,7 +44,7 @@ export function TemplatesPage({ workflowId }: { workflowId: string }) {
         if (active) setError(reason instanceof Error ? reason.message : 'Не удалось загрузить шаблоны.')
       })
     return () => { active = false }
-  }, [workflowId, attempt])
+  }, [workflowId, sharedTemplateId, attempt])
 
   async function request(action: () => Promise<void>) {
     if (inFlight.current) return
@@ -71,14 +79,51 @@ export function TemplatesPage({ workflowId }: { workflowId: string }) {
     })
   }
 
+  function importYaml(file: File) {
+    void request(async () => {
+      const workflow = await importTemplateYaml<Workflow>(file)
+      window.location.assign('?' + new URLSearchParams({ workflow: workflow.id, setup: '1' }))
+    })
+  }
+
+  function showShare(templateId: string) {
+    const url = new URL(window.location.href)
+    url.search = new URLSearchParams({ view: 'templates', template: templateId }).toString()
+    url.hash = ''
+    setShareUrl(url.href)
+    setShareStatus('')
+    shareDialog.current?.showModal()
+  }
+
+  async function copyShareLink() {
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      setShareStatus('Ссылка скопирована.')
+    } catch {
+      shareField.current?.select()
+      setShareStatus('Скопируйте выделенную ссылку вручную.')
+    }
+  }
+
   return <div className="garden-shell">
     <WorkspaceNav workflowId={workflowId} section="templates" />
     <main className="garden">
     <section className="garden-results">
       <p className="garden-kicker">Рабочее пространство <span>/</span> Каталог</p>
-      <div className="garden-page-heading"><h1>Шаблоны сценариев</h1>
-        {templates && templates.length > 0 && <button className="garden-primary" onClick={showPublishForm}>Опубликовать шаблон</button>}
+      <div className="garden-page-heading"><h1>{sharedTemplateId ? 'Шаблон по ссылке' : 'Шаблоны сценариев'}</h1>
+        <div className="garden-template-actions">
+          {sharedTemplateId && <a href="?view=templates">Все шаблоны</a>}
+          <button disabled={pending} onClick={() => upload.current?.click()}>Импортировать YAML</button>
+          {!sharedTemplateId && templates && templates.length > 0 &&
+            <button className="garden-primary" onClick={showPublishForm}>Опубликовать шаблон</button>}
+        </div>
       </div>
+      <input hidden ref={upload} type="file" accept=".yml,.yaml,application/yaml,text/yaml"
+        onChange={event => {
+          const file = event.currentTarget.files?.[0]
+          event.currentTarget.value = ''
+          if (file) importYaml(file)
+        }} />
       {!templates && !error && <p role="status">Загрузка шаблонов…</p>}
       {error && !publishing && <><p role="alert">{error}</p>
         {!templates && <button onClick={() => { setError(''); setAttempt(value => value + 1) }}>Повторить</button>}
@@ -94,7 +139,11 @@ export function TemplatesPage({ workflowId }: { workflowId: string }) {
           <span className="garden-template-icon"><Icon name="templates" /></span>
           <h2>{template.name}</h2>{template.description && <p>{template.description}</p>}
           <p className="garden-meta">Блоков: {template.workflow.nodes.length} · Ревизия {template.workflow.revision}</p>
-          <button disabled={pending} onClick={() => openCopiedTemplate(template.id)}>Создать копию</button>
+          <div className="garden-template-actions">
+            <button disabled={pending} onClick={() => openCopiedTemplate(template.id)}>Создать копию</button>
+            <a href={apiUrl('/templates/' + encodeURIComponent(template.id) + '/yaml')} download="cyber-garden-template.yml">Скачать YAML</a>
+            <button onClick={() => showShare(template.id)}>Поделиться ссылкой</button>
+          </div>
         </article>)}
       </div>}
       <dialog className="garden-dialog" ref={dialog} aria-labelledby="publish-template-title" onClose={() => setPublishing(false)}
@@ -111,6 +160,18 @@ export function TemplatesPage({ workflowId }: { workflowId: string }) {
             <button type="button" disabled={pending} onClick={() => dialog.current?.close()}>Отмена</button>
             <button className="garden-primary" disabled={!selectedWorkflow || !name.trim() || pending}>{pending ? 'Публикация…' : 'Опубликовать'}</button>
           </div>
+        </form>
+      </dialog>
+      <dialog className="garden-dialog" ref={shareDialog} aria-labelledby="share-template-title">
+        <h2 id="share-template-title">Поделиться шаблоном</h2>
+        <p>Получателю нужен доступ к этому экземпляру Cyber Garden.</p>
+        <label className="garden-template-link">Ссылка на шаблон
+          <input ref={shareField} value={shareUrl} readOnly onFocus={event => event.target.select()} />
+        </label>
+        {shareStatus && <p role="status">{shareStatus}</p>}
+        <form method="dialog" className="garden-template-dialog-actions">
+          <button type="button" className="garden-primary" onClick={() => void copyShareLink()}>Копировать ссылку</button>
+          <button>Закрыть</button>
         </form>
       </dialog>
     </section>

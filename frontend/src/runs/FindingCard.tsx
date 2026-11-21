@@ -1,15 +1,15 @@
 import { FindingHistory } from './FindingHistory'
+import { severityLabels } from './types'
 import type { Finding, Recommendation } from './types'
 import type { ReactNode } from 'react'
 
 type FindingCardProps = { finding: Finding; recommendation?: Recommendation; workflowId?: string; variant?: 'compact' | 'resolved'; action?: ReactNode }
 
-const severityLabels = { low: 'Низкая', medium: 'Средняя', high: 'Высокая', critical: 'Критическая' }
-
 export function FindingCard({ finding, recommendation, workflowId, variant, action }: FindingCardProps) {
   const resolved = variant === 'resolved'
   const details = <>
     <pre className="garden-evidence" aria-label="Доказательство">{finding.evidence}</pre>
+    {finding.fixedVersion && <p>Версия с исправлением: <code>{finding.fixedVersion}</code></p>}
     {recommendation && <section aria-label="Рекомендация">
       <p>{recommendation.explanation}</p>
       <p>{recommendation.action}</p>
@@ -17,6 +17,7 @@ export function FindingCard({ finding, recommendation, workflowId, variant, acti
         {recommendation.source === 'rule' ? 'Источник · правило анализа' : 'Источник · AI'}
       </small>
     </section>}
+    {!recommendation && finding.remediation && <p>{finding.remediation}</p>}
   </>
   return <article className="garden-finding" data-finding-id={finding.id} data-finding-variant={variant}>
     <header>

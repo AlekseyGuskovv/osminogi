@@ -6,6 +6,8 @@ from .analysis.report import markdown, submission
 from .analysis.types import Finding
 from .connections import connections, save_connection
 from .engine import SCAN_TYPES
+from .findings import finding_history, findings_overview, review_finding
+from .template_yaml import export_template, portable_graph
 from .contract import ApiError, SEVERITIES, to_internal, to_run, to_workflow
 
 
@@ -49,24 +51,6 @@ class WordApi:
         before = {item["id"] for item in older["findings"]}
         return {"againstRunId": older["id"], "introduced": sorted(found - before),
                 "existing": sorted(found & before), "resolved": sorted(before - found)}
-
-    def finding_history(self, key, finding_id):
-        source = self.runs(key)
-        if not source:
-            return {"findingId": finding_id, "entries": []}
-        anchor = next((row for row in reversed(source) if row.get("ci") in {"passed", "failed"}
-                       and any(item["id"] == finding_id for item in row.get("findings", []))), None)
-        entries, state = [], None
-        for row in reversed(source) if anchor else []:
-            if (row.get("ci") not in {"passed", "failed"} or row.get("analysisVersion") != anchor.get("analysisVersion")
-                    or row.get("scanned") != anchor.get("scanned")):
-                continue
-            present = any(item["id"] == finding_id for item in row.get("findings", []))
-            transition = ("found" if state is None else "returned") if present else "resolved"
-            if (present and state not in {"found", "returned"}) or (not present and state in {"found", "returned"}):
-                entries.append({"runId": row["id"], "state": transition})
-                state = transition
-        return {"findingId": finding_id, "entries": entries}
 
     def preview_threshold(self, row, data):
         node_id, value = data.get("nodeId"), data.get("value")
@@ -150,6 +134,14 @@ class WordApi:
         elif path == "/templates":
             rows = self.store.list("template")
             handler.reply(200, [self.template(row) for row in rows])
+        elif pieces[0] == "templates" and (len(pieces) == 2 or pieces[2:] == ["yaml"]):
+            row = self.store.get("template", pieces[1])
+            if row is None:
+                missing("Шаблон не найден.")
+            elif len(pieces) == 2:
+                handler.reply(200, self.template(row))
+            else:
+                handler.send_bytes(200, export_template(row), "application/yaml", filename="cyber-garden-template.yml")
         elif pieces[0] == "workflows" and len(pieces) >= 2:
             key = pieces[1]
             row = self.workflow(key)
@@ -159,8 +151,11 @@ class WordApi:
                 handler.send_ci_workflow(row["id"])
             elif pieces[2:] == ["runs"]:
                 handler.reply(200, [to_run(item) for item in self.runs(key)])
+            elif pieces[2:] == ["findings"]:
+                reviews = {review["findingId"]: review for review in self.store.list(f"finding-review:{key}")}
+                handler.reply(200, findings_overview(self.runs(key), reviews))
             elif len(pieces) == 5 and pieces[2] == "findings" and pieces[4] == "history":
-                handler.reply(200, self.finding_history(key, pieces[3]))
+                handler.reply(200, finding_history(self.runs(key), pieces[3]))
             else:
                 return False
         elif pieces[0] == "runs" and len(pieces) >= 2:
@@ -194,7 +189,7 @@ class WordApi:
 
     def template(self, row):
         return {key: value for key, value in row.items() if key != "graph"} | {
-            "workflow": to_workflow({**row, "snapshotId": None, "schedule": None})}
+            "workflow": to_workflow({**row, "graph": portable_graph(row["graph"]), "snapshotId": None, "schedule": None})}
 
     def post(self, path, data, handler):
         pieces = path.strip("/").split("/")
@@ -202,6 +197,9 @@ class WordApi:
             handler.reply(201, self.save(data))
         elif path == "/connections":
             handler.reply(201, save_connection(self.store, data))
+        elif len(pieces) == 5 and pieces[0] == "workflows" and pieces[2] == "findings" and pieces[4] == "review":
+            key = self.workflow(pieces[1])["id"]
+            handler.reply(200, review_finding(self.store, key, pieces[3], self.runs(key), data))
         elif len(pieces) == 3 and pieces[0] == "workflows":
             row = self.workflow(pieces[1])
             if pieces[2] == "save":

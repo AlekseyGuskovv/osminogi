@@ -141,7 +141,7 @@ try {
     if ($ports.Count) { throw 'Порт 18020 или 5188 занят. Закрой предыдущий запуск защиты.' }
 
     Write-Host 'Проверяю зависимости Python и собираю интерфейс.'
-    & $python -c 'import cryptography, tzdata'
+    & $python -c 'import cryptography, tzdata, ruamel.yaml'
     if ($LASTEXITCODE -ne 0) {
         & $python -m pip install -r (Join-Path $root 'requirements.txt')
         if ($LASTEXITCODE -ne 0) { throw 'Не удалось установить зависимости Python.' }

@@ -2,6 +2,8 @@ import type { CiStatus, RunStatus } from './events'
 import type { RunRequest } from './useRun'
 import type { WorkflowDraft } from '../workflow'
 
+export const severityLabels = { low: 'Низкая', medium: 'Средняя', high: 'Высокая', critical: 'Критическая' }
+
 export type Finding = {
   id: string
   ruleId: string
@@ -12,6 +14,13 @@ export type Finding = {
   line: number
   evidence: string
   advisoryId: string | null
+  category?: string | null
+  group?: string | null
+  artifact?: string | null
+  version?: string | null
+  advisoryAliases?: string[] | null
+  fixedVersion?: string | null
+  remediation?: string | null
 }
 
 export type Recommendation = {
