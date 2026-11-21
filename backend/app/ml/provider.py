@@ -93,14 +93,34 @@ class OllamaProvider:
             raise ModelError("Ollama вернула некорректный JSON.") from error
 
 
+class FallbackProvider:
+    def __init__(self, primary: LlmProvider, fallback: LlmProvider):
+        self.primary = primary
+        self.fallback = fallback
+
+    def generate_json(self, system: str, payload: dict, *, schema: dict | None = None) -> dict:
+        try:
+            return self.primary.generate_json(system, payload, schema=schema)
+        except ModelError as primary_error:
+            try:
+                return self.fallback.generate_json(system, payload, schema=schema)
+            except ModelError as fallback_error:
+                raise ModelError(
+                    f"Ошибка CodexGenerator: {primary_error} Ошибка Ollama: {fallback_error}",
+                    "AI_PROVIDERS_FAILED",
+                ) from fallback_error
+
+
 def build_provider() -> LlmProvider:
-    provider = os.environ.get("GARDEN_LLM_PROVIDER", "codex").strip().lower()
+    provider = os.environ.get("GARDEN_LLM_PROVIDER", "auto").strip().lower()
     if provider == "codex":
         return CodexProvider()
-    if provider == "ollama":
-        model = os.environ.get("GARDEN_OLLAMA_MODEL", "qwen3:4b").strip()
-        port = int(os.environ.get("GARDEN_OLLAMA_PORT", "11434"))
-        if not model or not 1 <= port <= 65535:
-            raise ValueError("Укажите имя локальной модели и порт Ollama.")
-        return OllamaProvider(model, port)
-    raise ValueError("GARDEN_LLM_PROVIDER должен быть codex или ollama.")
+    if provider not in {"auto", "ollama"}:
+        raise ValueError("GARDEN_LLM_PROVIDER должен быть auto, codex или ollama.")
+
+    model = os.environ.get("GARDEN_OLLAMA_MODEL", "qwen3:4b").strip()
+    port = int(os.environ.get("GARDEN_OLLAMA_PORT", "11434"))
+    if not model or not 1 <= port <= 65535:
+        raise ValueError("Укажите имя локальной модели и порт Ollama.")
+    ollama = OllamaProvider(model, port)
+    return ollama if provider == "ollama" else FallbackProvider(CodexProvider(), ollama)

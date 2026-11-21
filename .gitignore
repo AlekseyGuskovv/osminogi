@@ -4,3 +4,4 @@ __pycache__/
 .env
 .garden-data/
 examples/archives/
+tools/defense/Telegram.txt
