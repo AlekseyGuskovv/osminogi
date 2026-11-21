@@ -142,6 +142,9 @@ try {
     buttons.find(button => button.textContent === 'Сохранить').click()
     await waitFor(() => document.querySelector('[role="alert"]')?.textContent.includes('графа'))
     assert(document.querySelectorAll('.react-flow__node').length === 9, 'Rejected save retains changes')
+    palette.querySelectorAll('button')[1].click()
+    await waitFor(() => document.querySelectorAll('.react-flow__node').length === 10)
+    assert(document.querySelector('[data-id="secrets-1"]') && document.querySelector('[data-id="secrets-2"]'), 'Duplicate block types receive distinct IDs')
     return 'Editor: graph, palette, selection, drag, API save/run and error recovery passed'
   })
 

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { getJson, postJson } from '../api'
 import { nodeTypes } from '../workflow'
 import type { NodeType, Workflow } from '../workflow'
+import { addNode } from './graph'
 import '@xyflow/react/dist/style.css'
 import './editor.css'
 
@@ -81,12 +82,10 @@ export function WorkflowEditor({ workflowId }: EditorProps) {
   }
 
   function addBlock(type: NodeType) {
-    const id = crypto.randomUUID()
-    setWorkflow(current => current && ({
-      ...current,
-      nodes: [...current.nodes, { id, type, x: 90 + (current.nodes.length % 4) * 195, y: 370, settings: type === 'condition' ? { metric: 'maxSeverity', operator: 'gte', value: 'critical' } : {} }],
-    }))
-    setSelectedId(id)
+    if (!workflow) return
+    const next = addNode(workflow, type, { x: 90 + (workflow.nodes.length % 4) * 195, y: 370 })
+    setWorkflow(next)
+    setSelectedId(next.nodes[next.nodes.length - 1].id)
   }
 
   function linkBlocks({ source, target, sourceHandle }: Connection) {
