@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from hashlib import sha256
 from email import policy
 from email.parser import BytesParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -7,10 +8,12 @@ import os
 from pathlib import Path
 import re
 from threading import Condition, Event, Thread
+from urllib.error import URLError
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
+from examples.make_zips import training_archive
 
-from .analysis.catalog_service import CatalogService
+from .analysis.catalog_service import CatalogService, parse_catalog
 from .analysis.types import Snapshot
 from .connections import deliver
 from .contract import ApiError, schedule_value, to_event, to_internal, to_workflow, zone
@@ -19,7 +22,10 @@ from .engine import condition, execute, validate_graph
 from .api_schema import OPENAPI
 from .ml.live_draft import generate_workflow
 from .ml.provider import ModelError, build_provider
-from .project_import import ArchiveTooLarge, MAX_UPLOAD, read_project
+from .node_templates import generate_node_template, save_node_template
+from .project_import import (
+    ArchiveTooLarge, MAX_UPLOAD, ORGANIZER_COMMIT, ORGANIZER_REPOSITORY, read_organizer_project, read_project,
+)
 from .store import Store
 
 
@@ -37,6 +43,67 @@ def project(snapshot_id):
     if row is None:
         raise ApiError(422, "SNAPSHOT_REQUIRED", "Выберите загруженный учебный проект.")
     return Snapshot(row["id"], row["files"])
+
+
+def save_snapshot(snapshot, label, *, organizer_catalog=None):
+    row = {"id": snapshot.id, "label": label, "files": snapshot.files}
+    if organizer_catalog is not None:
+        row["organizerCatalog"] = organizer_catalog
+    STORE.put("snapshot", snapshot.id, row)
+    return snapshot_ref(row)
+
+
+def snapshot_ref(row):
+    public = {"id": row["id"], "label": row["label"]}
+    if "organizerCatalog" in row:
+        public["catalogSource"] = "organizer"
+    return public
+
+
+def snapshot_catalog(snapshot_id):
+    row = STORE.get("snapshot", snapshot_id)
+    text = row.get("organizerCatalog") if row else None
+    return parse_catalog(text, "organizer") if text is not None else CATALOG.current()
+
+
+def import_organizer_snapshot(url):
+    if url != ORGANIZER_REPOSITORY:
+        raise ApiError(422, "REPOSITORY_NOT_ALLOWED", "Выберите учебный репозиторий организаторов.")
+    snapshot_id = f"organizer-{ORGANIZER_COMMIT}"
+    cached = STORE.get("snapshot", snapshot_id)
+    if cached:
+        return snapshot_ref(cached)
+    try:
+        snapshot, catalog = read_organizer_project(url, snapshot_id)
+        parse_catalog(catalog, "organizer")
+    except (URLError, OSError) as error:
+        raise ApiError(502, "REPOSITORY_UNAVAILABLE", "GitHub не отдал архив. Повторите позже или загрузите ZIP.") from error
+    return save_snapshot(snapshot, "TBagirov/training · проект организаторов", organizer_catalog=catalog)
+
+
+def training_run(variant):
+    if variant not in ("before", "fixed"):
+        raise ApiError(422, "INVALID_VARIANT", "Выберите исходный или исправленный учебный снимок.")
+    kinds = ("start", "secrets", "sca", "sast", "gradle", "coverage", "condition", "finish", "finish")
+    nodes = [{"id": f"demo-{index}", "type": kind, "x": 40 + (index if index < 7 else 7) * 215,
+              "y": 110 if index < 7 else 40 + (index - 7) * 140,
+              "settings": {"metric": "maxSeverity", "operator": "gte", "value": "critical"} if index == 6 else {}}
+             for index, kind in enumerate(kinds)]
+    edges = [{"from": f"demo-{index}", "to": f"demo-{index + 1}", "branch": "next"} for index in range(6)]
+    edges += [{"from": "demo-6", "to": "demo-7", "branch": "yes"},
+              {"from": "demo-6", "to": "demo-8", "branch": "no"}]
+    graph = to_internal({"nodes": nodes, "edges": edges})
+    snapshots = {}
+    for key, name in (("before", "Учебный проект · до правок"), ("fixed", "Учебный проект · после правок")):
+        snapshot = read_project(training_archive(key), key)
+        digest = sha256(json.dumps(snapshot.files, sort_keys=True).encode()).hexdigest()[:16]
+        stored = Snapshot(f"training-{key}-{digest}", snapshot.files)
+        snapshots[key] = save_snapshot(stored, name)["id"]
+    workflow_id = "training-replay"
+    if STORE.get("workflow", workflow_id) is None:
+        save_workflow({"name": "Учебная проверка Kotlin", "graph": graph, "snapshotId": snapshots["before"]}, workflow_id)
+    return launch({"graph": graph, "snapshotId": snapshots[variant], "baseSnapshotId": snapshots["before"],
+                   "workflowId": workflow_id, "workflowRevision": 1}, "ci")
 
 
 class Run:
@@ -77,11 +144,11 @@ def launch(data, trigger="manual"):
     validated = checked_graph(data.get("graph"))
     snapshot = project(data.get("snapshotId"))
     base = project(data["baseSnapshotId"]) if data.get("baseSnapshotId") else None
-    catalog = CATALOG.current()
+    catalog = snapshot_catalog(snapshot.id)
     run = Run({"graph": data["graph"], "snapshotId": snapshot.id, "baseSnapshotId": base.id if base else None,
                "trigger": trigger, "createdAt": datetime.now(UTC).isoformat(),
                "workflowId": data.get("workflowId"), "workflowRevision": data.get("workflowRevision"),
-               "analysisVersion": catalog.version})
+               "analysisVersion": catalog.version, "catalogSource": catalog.source})
     RUNS[run.id] = run
     Thread(target=execute, args=(run, validated, snapshot, base, catalog.analyzers, PROVIDER,
                                  lambda node, report: deliver(STORE, node, report)),
@@ -210,13 +277,16 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/advisory-catalog":
             self.reply(200, CATALOG.status())
             return
-        if not demo and WORD_API.get(path, query, self):
+        if path == "/node-templates":
+            self.reply(200, STORE.list("node-template"))
+            return
+        if (not demo or path == "/connections") and WORD_API.get(path, query, self):
             return
         collections = {"/runs": "run", "/workflows": "workflow", "/templates": "template", "/snapshots": "snapshot"}
         if path in collections:
             rows = STORE.list(collections[path], 30 if path == "/runs" else -1)
             if path == "/snapshots":
-                rows = [{"id": row["id"], "label": row["label"]} for row in rows]
+                rows = [snapshot_ref(row) for row in rows]
             self.reply(200, rows)
             return
         if path.startswith("/runs/"):
@@ -294,9 +364,7 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(raw, bytes):
             raise ValueError("Не удалось прочитать ZIP.")
         snapshot = read_project(raw, uuid4().hex)
-        row = {"id": snapshot.id, "label": label[:160], "files": snapshot.files}
-        STORE.put("snapshot", snapshot.id, row)
-        self.reply(201, {"id": row["id"], "label": row["label"]})
+        self.reply(201, save_snapshot(snapshot, label[:160]))
 
     def do_POST(self):
         try:
@@ -324,11 +392,23 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self.read_body(65536))
             if not isinstance(data, dict):
                 raise ValueError("Ожидался JSON-объект.")
+            if path == "/snapshots/import-repository":
+                self.reply(201, import_organizer_snapshot(data.get("url")))
+                return
+            if path == "/training/runs":
+                self.reply(202, training_run(data.get("variant")))
+                return
             if path == "/advisory-catalog/refresh":
                 self.reply(202, CATALOG.refresh())
                 return
             if path == "/advisory-catalog/source":
                 self.reply(200, CATALOG.select(data.get("source")))
+                return
+            if path == "/node-templates/draft":
+                self.reply(200, generate_node_template(data.get("prompt"), PROVIDER))
+                return
+            if path == "/node-templates":
+                self.reply(201, save_node_template(STORE, data))
                 return
             if not demo and WORD_API.post(path, data, self):
                 return
@@ -378,12 +458,12 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     validate_graph(to_internal(draft))
                 except (ValueError, TypeError, KeyError, re.error) as error:
-                    raise ModelError("CodexGenerator вернул недопустимый граф.") from error
+                    raise ModelError("Модель вернула недопустимый граф.") from error
                 self.reply(200, draft)
             else:
                 self.reply(404, {"message": "Маршрут не найден."})
         except ModelError as error:
-            self.reply(503, {"code": "AI_UNAVAILABLE", "message": str(error)})
+            self.reply(503, {"code": error.code, "message": str(error)})
         except ArchiveTooLarge as error:
             self.reply(413, {"code": "ARCHIVE_TOO_LARGE", "message": str(error)})
         except json.JSONDecodeError:
@@ -397,12 +477,15 @@ def main():
     STORE = Store(ROOT)
     default = ROOT / "docs/training-advisories.json"
     CATALOG = CatalogService(default, Path(os.environ.get("GARDEN_ADVISORIES", default)))
-    WORD_API = WordApi(STORE, load_run, save_workflow, launch, project, condition, CATALOG)
+    WORD_API = WordApi(STORE, load_run, save_workflow, launch, project, condition, snapshot_catalog)
     for row in STORE.list("run"):
         if row["status"] in {"queued", "running"}:
             STORE.put("run", row["id"], {**row, "status": "failed", "ci": "error", "findings": [],
                                         "recommendations": [], "scanned": [], "steps": {},
-                                        "integrationErrors": [], "summary": "", "delivery": {"status": "skipped"}})
+                                        "integrationErrors": [],
+                                        "technicalErrors": [{"stage": "analysis", "code": "RUN_INTERRUPTED",
+                                                             "message": "Сервер перезапустился во время проверки."}],
+                                        "summary": "", "delivery": {"status": "skipped"}})
     port = int(os.environ.get("GARDEN_PORT", "8000"))
     with ThreadingHTTPServer(("127.0.0.1", port), Handler) as server:
         stop = Event()

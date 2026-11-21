@@ -48,6 +48,9 @@ def validate_graph(graph):
             raise ValueError("Неизвестный тип блока.")
         if any(type(node.get(axis)) not in (int, float) or not 0 <= node[axis] <= 10000 for axis in ("x", "y")):
             raise ValueError("Неверные координаты блока.")
+        for field, limit in (("name", 80), ("description", 300)):
+            if field in node and (not isinstance(node[field], str) or len(node[field]) > limit):
+                raise ValueError("Неверное название или описание блока.")
         if kind == "gate":
             condition(node, [])
         by_id[key], links[key] = node, {}
@@ -96,6 +99,7 @@ def execute(run, graph, snapshot, base, analyzers, provider, notify, *, require_
     nodes, links, key = graph
     findings, advice, steps, scanned = {}, {}, {}, set()
     summary, delivery, integration_errors = "", {"status": "skipped"}, []
+    technical_errors = []
     status, delta, resolved = "succeeded", None, None
 
     run.emit({"type": "run.status", "status": "running"})
@@ -142,11 +146,16 @@ def execute(run, graph, snapshot, base, analyzers, provider, notify, *, require_
             step(key, "done", count, output, **details)
         except (ModelError, DeliveryError) as error:
             integration_errors.append({"nodeId": key, "message": str(error)})
+            technical_errors.append({"nodeId": key, "stage": "ai" if isinstance(error, ModelError) else "telegram",
+                                     "code": error.code if isinstance(error, ModelError) else "DELIVERY_FAILED",
+                                     "message": str(error)})
             if kind == "telegram":
                 delivery = {"status": "failed", "message": str(error)}
             step(key, "failed", count, str(error))
         except Exception:
-            step(key, "failed", count, "Не удалось выполнить анализ.")
+            message = "Не удалось выполнить блок проверки."
+            technical_errors.append({"nodeId": key, "stage": "analysis", "code": "STEP_FAILED", "message": message})
+            step(key, "failed", count, message)
             status = "failed"
             break
         key = links[key].get(branch)
@@ -159,8 +168,12 @@ def execute(run, graph, snapshot, base, analyzers, provider, notify, *, require_
             resolved = [asdict(previous[key]) for key in delta["resolved"]]
         except (ValueError, KeyError):
             status = "failed"
-    if require_complete and not REQUIRED_SCANS <= scanned:
+            technical_errors.append({"stage": "comparison", "code": "COMPARISON_FAILED",
+                                     "message": "Не удалось проверить базовый снимок для сравнения."})
+    if require_complete and status == "succeeded" and not REQUIRED_SCANS <= scanned:
         status = "failed"
+        technical_errors.append({"stage": "analysis", "code": "INCOMPLETE_ANALYSIS",
+                                 "message": "Не все обязательные анализаторы завершили работу."})
     ci = ("error" if status == "failed" else
           "failed" if any(item.severity == "critical" for item in findings.values()) else
           "passed" if scanned else "unchecked")
@@ -168,7 +181,7 @@ def execute(run, graph, snapshot, base, analyzers, provider, notify, *, require_
                 "ci": ci, "findings": [asdict(item) for item in findings.values()],
                 "recommendations": [asdict(row) for row in advice.values()], "comparison": delta,
                 "resolvedFindings": resolved, "scanned": sorted(scanned), "steps": steps, "delivery": delivery,
-                "summary": summary, "integrationErrors": integration_errors})
+                "summary": summary, "integrationErrors": integration_errors, "technicalErrors": technical_errors})
 
 
 class HeadlessRun:

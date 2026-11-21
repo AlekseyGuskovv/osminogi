@@ -14,9 +14,9 @@ def missing(message):
 
 
 class WordApi:
-    def __init__(self, store, load_run, save_workflow, launch, project, condition, catalog):
+    def __init__(self, store, load_run, save_workflow, launch, project, condition, snapshot_catalog):
         self.store, self.load_run = store, load_run
-        self.catalog = catalog
+        self.snapshot_catalog = snapshot_catalog
         self.save_workflow, self.launch, self.project, self.condition = save_workflow, launch, project, condition
 
     def workflow(self, key):
@@ -81,7 +81,7 @@ class WordApi:
         branch = "yes" if self.condition({**node, "threshold": threshold}, facts) else "no"
         nodes = {item["id"]: item for item in graph["nodes"]}
         snapshot = self.project(row["snapshotId"])
-        catalog = self.catalog.current()
+        catalog = self.snapshot_catalog(snapshot.id)
         findings = {item.id: item for item in facts}
         source, first = node_id, branch
         while True:
@@ -119,8 +119,23 @@ class WordApi:
         if not saved or saved["runId"] != row["id"] or saved["snapshotId"] != snapshot.id:
             raise ApiError(409, "STALE_PREVIEW", "Создайте новый предпросмотр правки.")
         fixed = apply_training_patch(snapshot, Finding(**saved["finding"]), "fix-" + key)
-        self.store.put("snapshot", fixed.id, {"id": fixed.id, "label": "Учебный снимок после правки", "files": fixed.files})
+        row = self.store.get("snapshot", snapshot.id)
+        self.store.put("snapshot", fixed.id, {**row, "id": fixed.id, "label": "Учебный снимок после правки", "files": fixed.files})
         return 201, {"snapshotId": fixed.id}
+
+    def fixable_findings(self, row):
+        candidates = [item for item in row.get("findings", []) if item["ruleId"] == "SECRET-01"]
+        if not candidates:
+            return []
+        snapshot = self.project(row["snapshotId"])
+        result = []
+        for item in candidates:
+            try:
+                build_safe_patch(snapshot, Finding(**item))
+            except ValueError:
+                continue
+            result.append(item["id"])
+        return result
 
     def get(self, path, query, handler):
         pieces = path.strip("/").split("/")
@@ -147,7 +162,7 @@ class WordApi:
         elif pieces[0] == "runs" and len(pieces) >= 2:
             row = self.run(pieces[1])
             if len(pieces) == 2:
-                handler.reply(200, to_run(row))
+                handler.reply(200, {**to_run(row), "fixableFindingIds": self.fixable_findings(row)})
             elif pieces[2:] == ["comparison"]:
                 other = query.get("againstRunId", [None])[0]
                 result = self.compare_runs(row, self.run(other)) if other else row.get("comparison")
@@ -160,7 +175,9 @@ class WordApi:
                 report = submission(row.get("findings", []))
                 kind = query.get("format", ["json"])[0]
                 if kind == "markdown":
-                    handler.send_bytes(200, markdown(report).encode(), "text/markdown")
+                    version = row.get("analysisVersion")
+                    info = f"\nСправочник зависимостей: `{version}`\n" if version else ""
+                    handler.send_bytes(200, (markdown(report) + info).encode(), "text/markdown", filename="cyber-garden.md")
                 elif kind == "json":
                     handler.reply(200, report)
                 else:
