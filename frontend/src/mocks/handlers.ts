@@ -1,7 +1,9 @@
 import { http, HttpResponse } from 'msw'
+import { nodeTypes } from '../workflow'
+import type { Branch, Workflow, WorkflowDraft } from '../workflow'
 import { runEvents } from './events'
-import { compareFindings, initialWorkflow, makeRun, nodeTypes, snapshots } from './fixtures'
-import type { Branch, Run, RunRequest, RunScenario, Workflow, WorkflowDraft } from './fixtures'
+import { compareFindings, initialWorkflow, makeRun, snapshots } from './fixtures'
+import type { Run, RunRequest, RunScenario } from './fixtures'
 
 type StoredRun = { result: Run; at: string; readyAt: number; analyzers: string }
 
