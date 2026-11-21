@@ -2,6 +2,7 @@ from dataclasses import asdict
 import re
 
 from .analysis.coverage import summarize_coverage
+from .analysis.sca import DependencyScanner
 from .ml.live import generate_report
 from .ml.provider import ModelError
 from .telegram import DeliveryError
@@ -120,7 +121,9 @@ def execute(run, graph, snapshot, base, analyzers, provider, notify, *, require_
                 findings.update({item.id: item for item in rows})
                 output = "\n".join(f"{item.title} · {item.path}:{item.line}" for item in rows) or "Находок нет."
             elif kind == "coverage":
-                details["coverage"], output = summarize_coverage(snapshot, base, scanned)
+                sca = analyzers.get("sca")
+                details["coverage"], output = summarize_coverage(
+                    snapshot, base, scanned, sca if isinstance(sca, DependencyScanner) else None)
             elif kind == "ai":
                 summary, rows = generate_report(list(findings.values()), provider)
                 advice.update({row.findingId: row for row in rows})

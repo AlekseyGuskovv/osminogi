@@ -3,6 +3,7 @@ from itertools import zip_longest
 import re
 import tomllib
 
+from .maven_versions import VERSION_KEYS, maven_key
 from .source import kotlin_source, line_at
 from .types import Finding, Snapshot, finding
 
@@ -29,6 +30,8 @@ class VersionRange:
     upper: str | None = None
     include_lower: bool = True
     include_upper: bool = False
+    ordering: str | None = None
+    fixed: str | None = None
 
 
 @dataclass(frozen=True)
@@ -39,6 +42,9 @@ class Advisory:
     severity: str
     ranges: list[VersionRange]
     aliases: tuple[str, ...] = ()
+    versions: frozenset[str] = frozenset()
+    source: str | None = None
+    unsupported_ranges: bool = False
 
 
 SCOPE = r"(?:api|implementation|compileOnly|runtimeOnly|testImplementation|testRuntimeOnly|developmentOnly)"
@@ -157,10 +163,20 @@ def compare_versions(left: str, right: str) -> int:
 
 
 def version_in_range(version: str, bounds: VersionRange) -> bool:
-    lower = compare_versions(version, bounds.lower) if bounds.lower is not None else 1
-    upper = compare_versions(version, bounds.upper) if bounds.upper is not None else -1
+    if bounds.ordering:
+        key = VERSION_KEYS[bounds.ordering]
+        candidate = key(version)
+        lower = compare_keys(candidate, key(bounds.lower)) if bounds.lower is not None else 1
+        upper = compare_keys(candidate, key(bounds.upper)) if bounds.upper is not None else -1
+    else:
+        lower = compare_versions(version, bounds.lower) if bounds.lower is not None else 1
+        upper = compare_versions(version, bounds.upper) if bounds.upper is not None else -1
     return (lower > 0 or lower == 0 and bounds.include_lower) and (
         upper < 0 or upper == 0 and bounds.include_upper)
+
+
+def compare_keys(left, right):
+    return (left > right) - (left < right)
 
 
 def gradle_build_inputs(snapshot: Snapshot):
@@ -198,21 +214,120 @@ def project_dependencies(snapshot: Snapshot, *, unresolved=None):
                 yield path, dependency
 
 
+SEVERITY_ORDER = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+
+
+@dataclass
+class AdvisoryMatch:
+    advisory: Advisory
+    fixes: list[tuple[str, str]]
+    uncertain: bool
+    affected: bool = True
+
+
+class DependencyScanner:
+    def __init__(self, advisories):
+        self.by_coordinate = {}
+        self.osv = any(advisory.source == "osv" for advisory in advisories)
+        for advisory in advisories:
+            self.by_coordinate.setdefault((advisory.group, advisory.name), []).append(advisory)
+
+    def evaluate(self, dependency):
+        relevant = self.by_coordinate.get((dependency.group, dependency.name), ())
+        evaluated, uncertain = [], False
+        for advisory in relevant:
+            if advisory.source != "osv":
+                if any(version_in_range(dependency.version, bounds) for bounds in advisory.ranges):
+                    evaluated.append(AdvisoryMatch(advisory, [], False))
+                continue
+            found = dependency.version in advisory.versions
+            incomplete = advisory.unsupported_ranges
+            fixes = []
+            for bounds in advisory.ranges:
+                try:
+                    affected = version_in_range(dependency.version, bounds)
+                except ValueError:
+                    incomplete = True
+                    continue
+                if affected:
+                    found = True
+                    if bounds.fixed and bounds.ordering:
+                        fixes.append((bounds.ordering, bounds.fixed))
+            evaluated.append(AdvisoryMatch(advisory, fixes, incomplete, found))
+            uncertain = uncertain or incomplete
+        return evaluated, uncertain
+
+    def coverage_issue(self, dependency):
+        try:
+            if self.osv and self.by_coordinate.get((dependency.group, dependency.name)):
+                _, uncertain = self.evaluate(dependency)
+                return "unsupportedAdvisoryRange" if uncertain else None
+            (maven_key if self.osv else version_parts)(dependency.version)
+        except ValueError:
+            return "unsupportedVersion"
+        return None
+
+    def __call__(self, snapshot: Snapshot, node_id: str = "deps") -> list[Finding]:
+        results = {}
+        for path, dependency in project_dependencies(snapshot):
+            coordinate = f"{dependency.group}:{dependency.name}"
+            evaluated, _ = self.evaluate(dependency)
+            for group in group_matches(evaluated):
+                affected = [match.advisory for match in group if match.affected]
+                if not affected:
+                    continue
+                lead = min(affected, key=lambda row: row.id)
+                severity = max((advisory.severity for advisory in affected), key=SEVERITY_ORDER.__getitem__)
+                details = {}
+                anchor = lead.id
+                if lead.source == "osv":
+                    identifiers = {item for match in group for item in (match.advisory.id, *match.advisory.aliases)}
+                    anchor = min(identifiers, key=lambda item: (not item.startswith("CVE-"), item))
+                    details = {"advisoryAliases": sorted(identifiers - {lead.id}), "advisorySource": "OSV",
+                               "fixedVersion": fix_version(group)}
+                item = finding("SCA-01", node_id, severity, "Зависимость требует обновления", path, dependency.line,
+                               f"{coordinate}:{dependency.version}", f"{coordinate}:{anchor}",
+                               lead.id, category="SCA", group=dependency.group, artifact=dependency.name,
+                               version=dependency.version,
+                               remediation="Обновите зависимость до версии вне затронутого диапазона.", **details)
+                results.setdefault(item.id, item)
+        return list(results.values())
+
+
+def group_matches(matches):
+    groups = []
+    for match in matches:
+        advisory = match.advisory
+        ids = {advisory.id, *advisory.aliases} if advisory.source == "osv" else set()
+        merged = [match]
+        remaining = []
+        for other_ids, other_matches in groups:
+            if ids & other_ids:
+                ids.update(other_ids)
+                merged.extend(other_matches)
+            else:
+                remaining.append((other_ids, other_matches))
+        groups = [*remaining, (ids, merged)]
+    return [rows for _, rows in groups]
+
+
+def fix_version(group):
+    if any(match.uncertain for match in group):
+        return None
+    candidates = {fix for match in group for fix in match.fixes}
+    if len({ordering for ordering, _ in candidates}) > 1:
+        return None
+    for _, version in sorted(candidates, key=lambda row: VERSION_KEYS[row[0]](row[1])):
+        try:
+            if all(version not in match.advisory.versions
+                   and not any(version_in_range(version, bounds) for bounds in match.advisory.ranges)
+                   for match in group):
+                return version
+        except ValueError:
+            continue
+    return None
+
+
 def scan_dependencies(snapshot: Snapshot, advisories: list[Advisory],
                       node_id: str = "deps") -> list[Finding]:
-    results = {}
-    by_coordinate = {}
-    for advisory in advisories:
-        by_coordinate.setdefault((advisory.group, advisory.name), []).append(advisory)
-    for path, dependency in project_dependencies(snapshot):
-        coordinate = f"{dependency.group}:{dependency.name}"
-        for advisory in by_coordinate.get((dependency.group, dependency.name), ()):
-            if any(version_in_range(dependency.version, bounds) for bounds in advisory.ranges):
-                item = finding("SCA-01", node_id, advisory.severity,
-                               "Зависимость требует обновления", path, dependency.line,
-                               f"{coordinate}:{dependency.version}", f"{coordinate}:{advisory.id}",
-                               advisory.id, category="SCA", group=dependency.group, artifact=dependency.name,
-                               version=dependency.version,
-                               remediation="Обновите зависимость до версии вне затронутого диапазона.")
-                results.setdefault(item.id, item)
-    return list(results.values())
+    return DependencyScanner(advisories)(snapshot, node_id)

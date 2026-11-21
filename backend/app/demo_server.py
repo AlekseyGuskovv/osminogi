@@ -1,7 +1,6 @@
 from datetime import UTC, datetime
 from email import policy
 from email.parser import BytesParser
-from hashlib import sha256
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
@@ -11,8 +10,7 @@ from threading import Condition, Event, Thread
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
-from .analysis.advisories import load_advisories
-from .analysis.registry import register_analysis_handlers
+from .analysis.catalog_service import CatalogService
 from .analysis.types import Snapshot
 from .connections import deliver
 from .contract import ApiError, schedule_value, to_event, to_internal, to_workflow, zone
@@ -31,8 +29,7 @@ PROVIDER = build_provider()
 RUNS = {}
 STORE = None
 WORD_API = None
-ANALYSIS_VERSION = None
-ANALYZERS = None
+CATALOG: CatalogService
 
 
 def project(snapshot_id):
@@ -80,12 +77,13 @@ def launch(data, trigger="manual"):
     validated = checked_graph(data.get("graph"))
     snapshot = project(data.get("snapshotId"))
     base = project(data["baseSnapshotId"]) if data.get("baseSnapshotId") else None
+    catalog = CATALOG.current()
     run = Run({"graph": data["graph"], "snapshotId": snapshot.id, "baseSnapshotId": base.id if base else None,
                "trigger": trigger, "createdAt": datetime.now(UTC).isoformat(),
                "workflowId": data.get("workflowId"), "workflowRevision": data.get("workflowRevision"),
-               "analysisVersion": ANALYSIS_VERSION})
+               "analysisVersion": catalog.version})
     RUNS[run.id] = run
-    Thread(target=execute, args=(run, validated, snapshot, base, ANALYZERS, PROVIDER,
+    Thread(target=execute, args=(run, validated, snapshot, base, catalog.analyzers, PROVIDER,
                                  lambda node, report: deliver(STORE, node, report)),
            kwargs={"require_complete": trigger == "ci"}, daemon=True).start()
     return {"id": run.id, "status": "queued"}
@@ -209,6 +207,9 @@ class Handler(BaseHTTPRequestHandler):
             filename = "check_cyber_garden.py"
             self.send_bytes(200, (EXTERNAL_CI / filename).read_bytes(), "text/plain", filename=filename)
             return
+        if path == "/advisory-catalog":
+            self.reply(200, CATALOG.status())
+            return
         if not demo and WORD_API.get(path, query, self):
             return
         collections = {"/runs": "run", "/workflows": "workflow", "/templates": "template", "/snapshots": "snapshot"}
@@ -323,6 +324,12 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self.read_body(65536))
             if not isinstance(data, dict):
                 raise ValueError("Ожидался JSON-объект.")
+            if path == "/advisory-catalog/refresh":
+                self.reply(202, CATALOG.refresh())
+                return
+            if path == "/advisory-catalog/source":
+                self.reply(200, CATALOG.select(data.get("source")))
+                return
             if not demo and WORD_API.post(path, data, self):
                 return
             if path == "/runs":
@@ -386,14 +393,11 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    global STORE, ANALYZERS, WORD_API, ANALYSIS_VERSION
+    global STORE, CATALOG, WORD_API
     STORE = Store(ROOT)
     default = ROOT / "docs/training-advisories.json"
-    catalog = Path(os.environ.get("GARDEN_ADVISORIES", default))
-    catalog_text = catalog.read_text(encoding="utf-8-sig")
-    ANALYZERS = register_analysis_handlers(load_advisories(catalog_text))
-    ANALYSIS_VERSION = "organizer-v3:" + sha256(catalog_text.encode()).hexdigest()
-    WORD_API = WordApi(STORE, load_run, save_workflow, launch, project, condition, ANALYZERS)
+    CATALOG = CatalogService(default, Path(os.environ.get("GARDEN_ADVISORIES", default)))
+    WORD_API = WordApi(STORE, load_run, save_workflow, launch, project, condition, CATALOG)
     for row in STORE.list("run"):
         if row["status"] in {"queued", "running"}:
             STORE.put("run", row["id"], {**row, "status": "failed", "ci": "error", "findings": [],

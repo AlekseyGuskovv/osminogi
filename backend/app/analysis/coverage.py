@@ -1,5 +1,5 @@
 from .gradle import gradle_script
-from .sca import project_dependencies, version_parts
+from .sca import DependencyScanner, project_dependencies
 from .secrets import secret_source
 from .spring_config import APPLICATION
 from .types import Snapshot
@@ -8,18 +8,18 @@ from .types import Snapshot
 SCAN_LABELS = {"secrets": "Поиск секретов", "sca": "SCA", "sast": "SAST", "gradle": "Gradle"}
 REASONS = {"unknownAlias": "псевдоним отсутствует в каталоге версий",
            "unknownVersion": "не удалось определить версию",
-           "unsupportedVersion": "версия не поддерживается сравнением SCA"}
+           "unsupportedVersion": "версия не поддерживается сравнением SCA",
+           "unsupportedAdvisoryRange": "не удалось проверить один или несколько диапазонов OSV"}
 SAMPLE_LIMIT = 8
 
 
-def dependency_coverage(snapshot: Snapshot):
+def dependency_coverage(snapshot: Snapshot, scanner: DependencyScanner | None = None):
+    scanner = scanner or DependencyScanner(())
     unresolved = []
     comparable = 0
     for path, dependency in project_dependencies(snapshot, unresolved=unresolved):
-        try:
-            version_parts(dependency.version)
-        except ValueError:
-            unresolved.append((path, dependency.line, "unsupportedVersion"))
+        if issue := scanner.coverage_issue(dependency):
+            unresolved.append((path, dependency.line, issue))
         else:
             comparable += 1
     return {"recognized": comparable + len(unresolved), "comparable": comparable,
@@ -28,7 +28,7 @@ def dependency_coverage(snapshot: Snapshot):
                 for path, line, reason in sorted(unresolved)[:SAMPLE_LIMIT]]}
 
 
-def snapshot_coverage(snapshot: Snapshot, scanned: set[str]):
+def snapshot_coverage(snapshot: Snapshot, scanned: set[str], scanner: DependencyScanner | None = None):
     files = snapshot.files
     counts = {}
     if "secrets" in scanned:
@@ -40,7 +40,7 @@ def snapshot_coverage(snapshot: Snapshot, scanned: set[str]):
         counts["gradle"] = sum(gradle_script(path) for path in files)
     result = {"filesInSnapshot": len(files), "filesByAnalyzer": counts}
     if "sca" in scanned:
-        result["sca"] = dependency_coverage(snapshot)
+        result["sca"] = dependency_coverage(snapshot, scanner)
     return result
 
 
@@ -57,15 +57,16 @@ def snapshot_summary(title, coverage):
     return lines
 
 
-def summarize_coverage(snapshot: Snapshot, base: Snapshot | None, scanned: set[str]):
-    current = snapshot_coverage(snapshot, scanned)
+def summarize_coverage(snapshot: Snapshot, base: Snapshot | None, scanned: set[str],
+                       scanner: DependencyScanner | None = None):
+    current = snapshot_coverage(snapshot, scanned, scanner)
     result = {"completed": sorted(scanned), "current": current}
     completed = ", ".join(label for name, label in SCAN_LABELS.items() if name in scanned) or "нет"
     pending = ", ".join(label for name, label in SCAN_LABELS.items() if name not in scanned) or "нет"
     lines = [f"Выполнены к этому блоку: {completed}.", f"К этому блоку не выполнялись: {pending}.", "",
              *snapshot_summary("Текущий снимок", current)]
     if base is not None:
-        baseline = snapshot_coverage(base, scanned)
+        baseline = snapshot_coverage(base, scanned, scanner)
         result["base"] = baseline
         lines.extend(["", *snapshot_summary("База · доступность данных", baseline)])
     return result, "\n".join(lines)

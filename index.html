@@ -26,7 +26,20 @@
   <div class="row"><label>Проект<select id="snapshot"></select></label><label>База для сравнения<select id="base"></select></label></div>
   <div class="row"><label>Название сценария<input id="workflowName" value="Проверка"></label><button id="saveWorkflow">Сохранить сценарий</button><button id="downloadYaml">Получить YAML</button><label>Сохранённые<select id="workflows"></select></label></div>
   <div class="row"><button id="publish">Опубликовать шаблон</button><label>Шаблоны<select id="templates"></select></label><button id="copyTemplate">Создать копию</button></div>
-</section><details class="panel prompt"><summary>Собрать сценарий из текста</summary><form id="promptForm"><label for="prompt">Что нужно проверить?</label><textarea id="prompt" rows="2" placeholder="Например, найди секреты и отправь в Telegram критичные находки" required></textarea><div class="row"><button type="button" id="example">Подставить пример</button><button class="primary">Собрать сценарий</button></div></form></details>
+</section>
+<section class="panel prompt" aria-labelledby="catalogTitle">
+  <h2 id="catalogTitle">Справочник уязвимостей</h2>
+  <div class="row">
+    <label>Активный источник<select id="catalogSource" disabled>
+      <option value="training">Учебный</option>
+      <option value="osv">OSV Maven</option>
+      <option value="custom" hidden>Настроенный при запуске</option>
+    </select></label>
+    <button id="refreshOsv" disabled>Обновить OSV</button>
+  </div>
+  <p id="catalogStatus" role="status">Загрузка состояния справочника…</p>
+</section>
+<details class="panel prompt"><summary>Собрать сценарий из текста</summary><form id="promptForm"><label for="prompt">Что нужно проверить?</label><textarea id="prompt" rows="2" placeholder="Например, найди секреты и отправь в Telegram критичные находки" required></textarea><div class="row"><button type="button" id="example">Подставить пример</button><button class="primary">Собрать сценарий</button></div></form></details>
 <p id="message" class="message" role="status" hidden></p>
 <div class="workspace">
 <section class="panel" aria-labelledby="graphTitle"><div class="bar"><h2 id="graphTitle">Сценарий проверки</h2><small id="saveState"></small></div><div class="palette" id="palette" aria-label="Добавить блок"></div><div class="viewport"><div id="canvas" class="canvas"><svg id="wires" class="wires" aria-hidden="true"></svg><div id="nodes"></div></div></div><p class="hint">Перетащите блок, чтобы переместить его. Выберите блок, чтобы настроить его или добавить связь.</p></section>
@@ -81,6 +94,37 @@ async function api(path, data) {
   if (!response.ok) throw Error(body.message || 'Запрос не выполнен.');
   return body;
 }
+let catalogState, catalogTimer;
+const catalogSource = $('catalogSource'), refreshOsv = $('refreshOsv'), catalogStatus = $('catalogStatus');
+async function loadCatalog(path = '/advisory-catalog', data) {
+  clearTimeout(catalogTimer);
+  catalogSource.disabled = refreshOsv.disabled = true;
+  let error = '';
+  try {
+    catalogState = await api(path, data);
+  } catch (failure) {
+    error = failure.message;
+  }
+  if (catalogState) {
+    const info = catalogState;
+    catalogSource.querySelector('[value="custom"]').hidden = !info.customAvailable;
+    catalogSource.querySelector('[value="osv"]').disabled = !info.osvAvailable;
+    catalogSource.value = info.source;
+    catalogSource.disabled = refreshOsv.disabled = info.updating;
+    refreshOsv.textContent = info.updating ? 'Обновляется…' : 'Обновить OSV';
+    const updated = info.osvUpdatedAt
+      ? 'OSV обновлён ' + new Date(info.osvUpdatedAt).toLocaleString('ru-RU') + '.'
+      : info.osvAvailable ? 'Дата обновления OSV неизвестна.' : 'Каталог OSV ещё не загружен.';
+    catalogStatus.textContent = [error || info.error, info.updating ? 'Скачивается каталог OSV.' : '', updated]
+      .filter(Boolean).join(' ');
+    if (info.updating) catalogTimer = setTimeout(loadCatalog, 1500);
+  } else {
+    catalogStatus.textContent = error || 'Не удалось получить состояние справочника.';
+    catalogTimer = setTimeout(loadCatalog, 4000);
+  }
+}
+refreshOsv.onclick = () => loadCatalog('/advisory-catalog/refresh', {});
+catalogSource.onchange = event => loadCatalog('/advisory-catalog/source', {source:event.target.value});
 function makeGraph(checks = ['secrets','deps','code'], notify = true, explain = true, threshold = 2) {
   const chain = ['start', ...checks, ...(explain ? ['ai'] : []), 'gate'];
   const places = [[22,30],[222,30],[422,30],[622,30],[622,160],[422,160]];
@@ -351,10 +395,13 @@ function runEntry(result) {
       evidence:item.evidence,source:analyzer[item.ruleId],
       explain:recommendation?.explanation || 'Анализатор отметил эту строку для проверки.',
       fix:recommendation?.action || item.remediation || 'Проверьте отмеченную настройку.',
-      adviceSource:recommendation?.source,advisoryId:item.advisoryId};
+      adviceSource:recommendation?.source,advisoryId:item.advisoryId,advisoryAliases:item.advisoryAliases,
+      advisorySource:item.advisorySource,version:item.version,fixedVersion:item.fixedVersion};
   });
   const compareWith = result.resolvedFindings?.map(item=>({id:item.id,title:item.title,severity:item.severity,level:severities[item.severity],
-    file:item.path,line:item.line,evidence:item.evidence,explain:'Находка присутствовала в базовом снимке.',fix:'Проверьте изменение в исходном файле.'}));
+    file:item.path,line:item.line,evidence:item.evidence,explain:'Находка присутствовала в базовом снимке.',
+    fix:'Проверьте изменение в исходном файле.',advisoryId:item.advisoryId,advisoryAliases:item.advisoryAliases,
+    advisorySource:item.advisorySource,version:item.version,fixedVersion:item.fixedVersion}));
   const fixed = result.ci==='error'?[]:compareWith ?? [];
   return {id:result.id,time:new Date(result.createdAt).toLocaleString('ru-RU'),found,fixed,
     steps:result.steps,ci:result.ci,comparison:result.comparison,summary:result.summary,
@@ -488,16 +535,28 @@ function drawResults() {
     + '<h3>Открытые находки · '+entry.found.length+'</h3>'+(entry.found.length?'<div class="findings">'+entry.found.map(item=>finding(item,false)).join('')+'</div>':'<p>В выполненных блоках находок нет.</p>')
     + (entry.fixed.length?'<h3>Устранено · '+entry.fixed.length+'</h3><div class="findings">'+entry.fixed.map(item=>finding(item,true)).join('')+'</div>':'');
 }
+function advisoryDetails(item) {
+  if (!item.advisoryId) return '';
+  const id = encode(item.advisoryId);
+  const record = item.advisorySource === 'OSV'
+    ? '<a href="https://osv.dev/vulnerability/'+encodeURIComponent(item.advisoryId)+'" target="_blank" rel="noopener noreferrer">'+id+'</a>'
+    : id;
+  const aliases = item.advisoryAliases?.length ? ' · '+item.advisoryAliases.map(encode).join(', ') : '';
+  return '<small>Запись справочника · '+record+aliases+'</small>'
+    + (item.version ? '<small>Версия в снимке · '+encode(item.version)+'</small>' : '')
+    + (item.fixedVersion ? '<small>Исправлено в версии · '+encode(item.fixedVersion)+'</small>' : '');
+}
 $('results').onclick = event => {
   const button = event.target.closest('button');
   if (!button) return;
   if (button.dataset.run) { viewed = button.dataset.run; drawResults(); return; }
   const entry = state.history.find(item=>item.id===viewed), fixed = button.dataset.fixed==='true';
   const item = (fixed ? entry.fixed : entry.found).find(result=>result.id===button.dataset.finding);
-  $('detailBody').innerHTML = '<span class="badge '+(fixed?'':item.level===2?'red':'amber')+'">'+(fixed?'Устранено':findingLevel(item))+'</span><h2>'+encode(item.title)+'</h2><p class="path">'+encode(item.file)+' · строка '+item.line+'</p><pre>'+encode(item.evidence)+'</pre>'+(item.advisoryId?'<small>Запись справочника · '+encode(item.advisoryId)+'</small>':'')+'<section><h3>Почему это важно</h3><p>'+encode(item.explain)+'</p></section><section><h3>Что исправить</h3><p>'+encode(item.fix)+'</p></section><small>'+(item.adviceSource==='ai'?'Совет CodexGenerator':item.adviceSource==='rule'?'Совет из правила':'Справка к находке')+'</small>';
+  $('detailBody').innerHTML = '<span class="badge '+(fixed?'':item.level===2?'red':'amber')+'">'+(fixed?'Устранено':findingLevel(item))+'</span><h2>'+encode(item.title)+'</h2><p class="path">'+encode(item.file)+' · строка '+item.line+'</p><pre>'+encode(item.evidence)+'</pre>'+advisoryDetails(item)+'<section><h3>Почему это важно</h3><p>'+encode(item.explain)+'</p></section><section><h3>Что исправить</h3><p>'+encode(item.fix)+'</p></section><small>'+(item.adviceSource==='ai'?'Совет CodexGenerator':item.adviceSource==='rule'?'Совет из правила':'Справка к находке')+'</small>';
   $('detail').showModal();
 };
 drawControls(); update(); drawResults();
+loadCatalog();
 refreshLists().then(()=>{
   const saved=state.workflowId && $('workflows').selectedOptions[0];
   if (saved) $('workflowName').value=saved.textContent;

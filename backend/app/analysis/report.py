@@ -11,6 +11,9 @@ def submission_row(item):
             # Older stored SCA rows carry the coordinate as their evidence.
             group, artifact, version = item["evidence"].split(":", 2)
             result.update(group=group, artifact=artifact, version=version, advisoryId=item["advisoryId"])
+        for key in ("advisoryAliases", "advisorySource", "fixedVersion"):
+            if item.get(key):
+                result[key] = item[key]
     else:
         result.update({"class": item.get("classification") or item["ruleId"], "line": item["line"]})
         if item.get("endLine") is not None and item["endLine"] > item["line"]:
@@ -37,6 +40,10 @@ def markdown(report):
         if item["category"] == "SCA":
             location += " · " + ":".join(item[key] for key in ("group", "artifact", "version"))
             location += " · " + item["advisoryId"]
+            if item.get("advisoryAliases"):
+                location += " · " + ", ".join(item["advisoryAliases"])
+            if item.get("fixedVersion"):
+                location += " · исправлено в " + item["fixedVersion"]
         else:
             location += ":" + str(item["line"])
             if "endLine" in item:

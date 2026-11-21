@@ -19,6 +19,7 @@ INTEGER = {"type": "integer"}
 NUMBER = {"type": "number"}
 BOOL = {"type": "boolean"}
 MAP = {"type": "object"}
+CATALOG_SOURCE = choice("training", "osv", "custom")
 GRAPH = {"nodes": array(ref("Node")), "edges": array(ref("Edge"))}
 DRAFT = {"name": STRING, "schedule": {"anyOf": [ref("Schedule"), {"type": "null"}]},
          "snapshotId": {"type": ["string", "null"]}, **GRAPH}
@@ -26,6 +27,9 @@ BASE = "application/json"
 
 SCHEMAS = {
     "Error": obj(["code", "message"], code=STRING, message=STRING),
+    "AdvisoryCatalog": obj(["source", "analysisVersion", "osvAvailable", "customAvailable", "updating"],
+                           source=CATALOG_SOURCE, analysisVersion=STRING, osvAvailable=BOOL, customAvailable=BOOL,
+                           updating=BOOL, osvUpdatedAt={"type": ["string", "null"]}, error={"type": ["string", "null"]}),
     "Schedule": obj(["time", "timezone"], time=STRING, timezone=STRING),
     "Node": obj(["id", "type", "x", "y", "settings"], id=STRING, x=NUMBER, y=NUMBER,
                 type=choice("start", "secrets", "sca", "sast", "gradle", "coverage", "ai", "condition", "telegram", "finish"),
@@ -41,9 +45,11 @@ SCHEMAS = {
                    id=STRING, ruleId=STRING, nodeId=STRING, severity=choice("low", "medium", "high", "critical"),
                    title=STRING, path=STRING, line=INTEGER, endLine={"type": ["integer", "null"]}, evidence=STRING,
                    advisoryId={"type": ["string", "null"]}, category={"type": ["string", "null"]},
-                   classification={"type": ["string", "null"]}),
+                   classification={"type": ["string", "null"]}, version={"type": ["string", "null"]},
+                   advisoryAliases={"anyOf": [array(STRING), {"type": "null"}]},
+                   advisorySource={"type": ["string", "null"]}, fixedVersion={"type": ["string", "null"]}),
     "CoverageIssue": obj(["path", "line", "reason"], path=STRING, line=INTEGER,
-                         reason=choice("unknownAlias", "unknownVersion", "unsupportedVersion")),
+                         reason=choice("unknownAlias", "unknownVersion", "unsupportedVersion", "unsupportedAdvisoryRange")),
     "SnapshotCoverage": obj(["filesInSnapshot", "filesByAnalyzer"], filesInSnapshot=INTEGER,
                             filesByAnalyzer={"type": "object", "additionalProperties": INTEGER},
                             sca=obj(["recognized", "comparable", "unresolved", "examples"],
@@ -100,6 +106,10 @@ def describe(*operations):
 
 
 PATHS = {
+    "/advisory-catalog": describe(operation("get", 200, ref("AdvisoryCatalog"))),
+    "/advisory-catalog/refresh": describe(operation("post", 202, ref("AdvisoryCatalog"), MAP)),
+    "/advisory-catalog/source": describe(operation("post", 200, ref("AdvisoryCatalog"),
+                                                 obj(["source"], source=CATALOG_SOURCE))),
     "/snapshots": describe(operation("get", 200, array(ref("Snapshot")))),
     "/snapshots/import": describe(operation("post", 201, ref("Snapshot"),
                                             obj(["file"], file={"type": "string", "format": "binary"}), request_content="multipart/form-data")),

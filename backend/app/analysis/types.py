@@ -28,6 +28,9 @@ class Finding:
     artifact: str | None = None
     version: str | None = None
     remediation: str | None = None
+    advisoryAliases: list[str] | None = None
+    advisorySource: str | None = None
+    fixedVersion: str | None = None
 
 
 def make_finding_id(rule_id: str, path: str, anchor: str) -> str:
