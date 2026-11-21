@@ -150,8 +150,26 @@ try {
     assert(gate.settings.value === 'high', 'Condition form updates saved threshold')
     assert(workflow.schedule?.timezone === 'Europe/Moscow', 'Schedule form updates saved workflow')
     assert(workflow.nodes.find(node => node.id === 'tg').settings.channelId === 'team-demo', 'Telegram channel remains in graph')
-    buttons.find(button => button.textContent.includes('Запустить')).click()
-    await waitFor(() => document.querySelector('[role="status"]')?.textContent.includes('в очередь'))
+    const runButton = buttons.find(button => button.textContent.includes('Запустить'))
+    const nativeFetch = window.fetch
+    let starts = 0
+    window.fetch = (input, init) => {
+      if (init?.method === 'POST' && String(input).endsWith('/workflows/wf-1/runs')) {
+        starts++
+        return new Promise(resolve => setTimeout(resolve, 150)).then(() => nativeFetch(input, init))
+      }
+      return nativeFetch(input, init)
+    }
+    runButton.click()
+    runButton.click()
+    try {
+      await waitFor(() => runButton.disabled)
+      await waitFor(() => document.querySelector('[role="status"]')?.textContent.includes('в очередь'))
+      assert(starts === 1, 'Only one POST runs is sent')
+      assert(document.querySelector('[data-run-status="queued"]'), 'Accepted run opens as queued')
+    } finally {
+      window.fetch = nativeFetch
+    }
 
     const { postJson } = await import('/src/api.ts')
     const addAndSelect = () => palette.querySelectorAll('button')[1].click()

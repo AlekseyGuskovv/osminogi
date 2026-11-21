@@ -1,7 +1,8 @@
 import { Background, Controls, Handle, MarkerType, Position, ReactFlow } from '@xyflow/react'
 import type { Connection, Node, NodeChangeset, NodeProps } from '@xyflow/react'
 import { useEffect, useState } from 'react'
-import { getJson, postJson } from '../api'
+import { getJson } from '../api'
+import { useStartRun } from '../runs/useRun'
 import { nodeTypes } from '../workflow'
 import type { NodeType, Workflow } from '../workflow'
 import { newWorkflow, saveDraft } from './useWorkflow'
@@ -51,7 +52,9 @@ export function WorkflowEditor({ workflowId }: EditorProps) {
   const [selectedId, setSelectedId] = useState('')
   const [loading, setLoading] = useState(true)
   const [loadAttempt, setLoadAttempt] = useState(0)
-  const [pending, setPending] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const { start, starting, accepted } = useStartRun()
+  const pending = saving || starting
   const [notice, setNotice] = useState<{ text: string; error?: boolean }>()
   const activeNode = workflow?.nodes.find(node => node.id === selectedId)
 
@@ -98,7 +101,7 @@ export function WorkflowEditor({ workflowId }: EditorProps) {
 
   async function submit(action: 'save' | 'run') {
     if (!workflow || pending) return
-    setPending(true)
+    if (action === 'save') setSaving(true)
     setNotice(undefined)
     try {
       if (action === 'save') {
@@ -111,14 +114,13 @@ export function WorkflowEditor({ workflowId }: EditorProps) {
         setWorkflow(saved)
         setNotice({ text: `Сохранено · ревизия ${saved.revision}` })
       } else if (workflow.id) {
-        const path = `/workflows/${encodeURIComponent(workflow.id)}`
-        const run = await postJson<{ id: string; status: 'queued' }>(`${path}/runs`, { trigger: 'manual', snapshotId })
-        setNotice({ text: `${run.id} поставлен в очередь` })
+        const run = await start(workflow.id, { trigger: 'manual', snapshotId })
+        if (run) setNotice({ text: `${run.id} поставлен в очередь` })
       }
     } catch (error) {
       setNotice({ text: error instanceof Error ? error.message : 'Не удалось выполнить запрос.', error: true })
     } finally {
-      setPending(false)
+      if (action === 'save') setSaving(false)
     }
   }
 
@@ -151,6 +153,9 @@ export function WorkflowEditor({ workflowId }: EditorProps) {
         </div>}
       </section>
       {notice && <p className={`garden-notice ${notice.error ? 'error' : ''}`} role={notice.error ? 'alert' : 'status'}>{notice.text}</p>}
+      {accepted && <section className="garden-run-accepted" aria-label="Текущий запуск">
+        <strong>{accepted.id}</strong> <span data-run-status={accepted.status}>В очереди</span>
+      </section>}
       {loading && <p className="garden-notice" role="status">Загрузка сценария…</p>}
       {!loading && !workflow && <button className="garden-retry" onClick={() => { setLoading(true); setNotice(undefined); setLoadAttempt(attempt => attempt + 1) }}>Повторить</button>}
       {workflow && <div className="garden-workspace">

@@ -10,6 +10,7 @@
 | 6 | Connect Nodes | `feat/6-connect-nodes` | `c0dc011` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Независимые ветки и защита от циклов. |
 | 7 | Remove Node | `feat/7-remove-node` | `e7f7cab` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Удаление блока и всех его связей. |
 | 8 | Node Settings | `feat/8-node-settings` | `ca229dc` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Формы расписания, условия и канала. |
-| 9 | Workflow Saving | `feat/9-workflow-save` | HEAD ветки | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Готово к публикации | Создание, конфликт ревизии и восстановление после перезагрузки. |
+| 9 | Workflow Saving | `feat/9-workflow-save` | `4b3f474` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Создание, конфликт ревизии и восстановление после перезагрузки. |
+| 10 | Start Run | `feat/10-start-run` | HEAD ветки | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Готово к публикации | POST запуска, отображение queued и защита от повторной отправки. |
 
-Следующая задача — Task 10, запуск сценария.
+Следующая задача — Task 11, EventSource.
