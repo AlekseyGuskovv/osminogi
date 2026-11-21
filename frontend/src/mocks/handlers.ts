@@ -2,6 +2,7 @@ import { http, HttpResponse } from 'msw'
 import type { Template } from '../templates/types'
 import { nodeTypes } from '../workflow'
 import type { Branch, Workflow, WorkflowDraft } from '../workflow'
+import { inspectZip } from './zip'
 import { runEvents } from './events'
 import { compareFindings, initialWorkflow, makeRun, snapshots } from './fixtures'
 import type { Run } from '../runs/types'
@@ -43,6 +44,16 @@ try {
   // Keep the catalog available without persistence.
 }
 let nextTemplate = 1
+const snapshotStorageKey = 'cyber-garden.mock.snapshots.v2'
+let importedSnapshots: typeof snapshots = []
+try {
+  const saved = globalThis.localStorage?.getItem(snapshotStorageKey)
+  if (saved) importedSnapshots = JSON.parse(saved) as typeof snapshots
+} catch {
+  // Use the built-in demo snapshots when storage is unavailable.
+}
+const allSnapshots = () => [...snapshots, ...importedSnapshots]
+
 let nextWorkflow = 2
 let nextRun = 4
 let nextPreview = 1
@@ -223,7 +234,25 @@ function scenarioFor(request: Request): RunScenario | undefined {
 }
 
 export const handlers = [
-  http.get(api('/snapshots'), () => HttpResponse.json(snapshots)),
+  http.get(api('/snapshots'), () => HttpResponse.json(allSnapshots())),
+  http.post(api('/snapshots/import'), async ({ request }) => {
+    const form = await request.formData().catch(() => undefined)
+    const file = form?.get('file')
+    if (!(file instanceof File)) return error(422, 'INVALID_ARCHIVE', 'Передайте ZIP-архив в поле file.')
+    const issue = await inspectZip(file)
+    if (issue === 'ARCHIVE_TOO_LARGE') {
+      return error(413, issue, 'Лимит ZIP — 20 МБ, до 100 МБ после распаковки и до 5000 файлов.')
+    }
+    if (issue) return error(422, issue, 'ZIP-архив пуст, повреждён или содержит недопустимые файлы.')
+    const snapshot = { id: `upload-${crypto.randomUUID()}`, label: file.name.slice(0, -4) }
+    importedSnapshots.push(snapshot)
+    try {
+      globalThis.localStorage?.setItem(snapshotStorageKey, JSON.stringify(importedSnapshots))
+    } catch {
+      // Keep the imported snapshot available on this page.
+    }
+    return HttpResponse.json(snapshot, { status: 201 })
+  }),
   http.get(api('/templates'), () => HttpResponse.json([...templates.values()])),
   http.post(api('/templates'), async ({ request }) => {
     const body = await readBody(request)
@@ -297,12 +326,12 @@ export const handlers = [
     if (snapshotId === undefined || snapshotId === '') {
       return error(422, 'SNAPSHOT_REQUIRED', 'Выберите снимок проекта перед запуском.')
     }
-    if (typeof snapshotId !== 'string' || !snapshots.some(snapshot => snapshot.id === snapshotId)) {
+    if (typeof snapshotId !== 'string' || !allSnapshots().some(snapshot => snapshot.id === snapshotId)) {
       return notFound('Снимок проекта не найден.')
     }
     const baseSnapshotId = body?.baseSnapshotId
     if (baseSnapshotId !== undefined && baseSnapshotId !== 'main-critical' &&
-      !snapshots.some(snapshot => snapshot.id === baseSnapshotId)) {
+      !allSnapshots().some(snapshot => snapshot.id === baseSnapshotId)) {
       return notFound('Базовый снимок проекта не найден.')
     }
     const trigger = body?.trigger

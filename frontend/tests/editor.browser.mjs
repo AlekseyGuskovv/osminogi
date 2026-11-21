@@ -513,6 +513,38 @@ try {
     return 'AI draft: generated, edited, explicitly saved, and ran to green CI'
   })
 
+  await evaluate(4175, async () => {
+    const { importSnapshot, getJson, ApiError } = await import('/src/api.ts')
+    const bytes = Uint8Array.from(atob('UEsDBBQAAAAIALWwdF1L9CGBHQAAABsAAAAKAAAAUkVBRE1FLnR4dHOuTEotUnBPLEpJzVMoSS0uUSjOSywozsgv4QIAUEsBAhQDFAAAAAgAtbB0XUv0IYEdAAAAGwAAAAoAAAAAAAAAAAAAAIABAAAAAFJFQURNRS50eHRQSwUGAAAAAAEAAQA4AAAARQAAAAAA'), char => char.charCodeAt(0))
+    const file = new File([bytes], 'learning.zip', { type: 'application/zip' })
+    const nativeFetch = window.fetch
+    let status
+    window.fetch = async (input, options) => {
+      const request = new Request(new URL(input, location.origin), options)
+      if (!request.headers.get('content-type')?.startsWith('multipart/form-data; boundary=') ||
+        options.headers || options.method !== 'POST' || request.url.split(location.origin)[1] !== '/api/v1/snapshots/import') {
+        throw new Error('Invalid upload request')
+      }
+      const response = await nativeFetch(input, options)
+      status = response.status
+      return response
+    }
+    let snapshot
+    try { snapshot = await importSnapshot(file) }
+    finally { window.fetch = nativeFetch }
+    if (status !== 201 || snapshot.label !== 'learning' || !(await getJson('/snapshots')).some(item => item.id === snapshot.id)) {
+      throw new Error('Imported snapshot missing')
+    }
+    for (const [badFile, statusCode, code] of [
+      [new File(['broken'], 'bad.zip'), 422, 'INVALID_ARCHIVE'],
+      [new File([new Uint8Array(20 * 1024 * 1024 + 1)], 'large.zip'), 413, 'ARCHIVE_TOO_LARGE'],
+    ]) {
+      try { await importSnapshot(badFile); throw new Error('Accepted invalid upload') }
+      catch (error) { if (!(error instanceof ApiError) || error.status !== statusCode || error.code !== code) throw error }
+    }
+    return 'Snapshot import: browser-generated multipart boundary and statuses 201, 413, 422 passed'
+  })
+
   await evaluate(4176, async () => {
     const { installMocks } = await import('/src/mocks/worker.ts')
     await installMocks()

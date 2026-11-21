@@ -48,6 +48,14 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
   })
 }
 
+export type SnapshotRef = { id: string; label: string }
+
+export function importSnapshot(file: File): Promise<SnapshotRef> {
+  const body = new FormData()
+  body.append('file', file)
+  return requestJson<SnapshotRef>('/snapshots/import', { method: 'POST', body })
+}
+
 const postErrorMessages: Partial<Record<number, string>> = {
   400: 'Некорректный запрос.',
   409: 'Запрос конфликтует с текущим состоянием ресурса.',
