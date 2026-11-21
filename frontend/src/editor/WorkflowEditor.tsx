@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { getJson, postJson } from '../api'
 import { nodeTypes } from '../workflow'
 import type { NodeType, Workflow } from '../workflow'
-import { addNode } from './graph'
+import { addNode, connect } from './graph'
 import '@xyflow/react/dist/style.css'
 import './editor.css'
 
@@ -90,11 +90,7 @@ export function WorkflowEditor({ workflowId }: EditorProps) {
 
   function linkBlocks({ source, target, sourceHandle }: Connection) {
     const branch = sourceHandle === 'yes' || sourceHandle === 'no' ? sourceHandle : 'next'
-    if (source === target || workflow?.nodes.find(node => node.id === target)?.type === 'start') return
-    setWorkflow(current => current && ({
-      ...current,
-      edges: [...current.edges.filter(edge => edge.from !== source || edge.branch !== branch), { from: source, to: target, branch }],
-    }))
+    setWorkflow(current => current && connect(current, { from: source, to: target, branch }))
   }
 
   async function submit(action: 'save' | 'run') {

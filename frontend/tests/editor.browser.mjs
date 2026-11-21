@@ -145,7 +145,15 @@ try {
     palette.querySelectorAll('button')[1].click()
     await waitFor(() => document.querySelectorAll('.react-flow__node').length === 10)
     assert(document.querySelector('[data-id="secrets-1"]') && document.querySelector('[data-id="secrets-2"]'), 'Duplicate block types receive distinct IDs')
-    return 'Editor: graph, palette, selection, drag, API save/run and error recovery passed'
+    const edgePath = branch => document.querySelector(`[data-testid="rf__edge-gate:${branch}"] path.react-flow__edge-path`)?.getAttribute('d')
+    const yesPath = edgePath('yes')
+    const noPath = edgePath('no')
+    assert(yesPath && noPath, 'Existing branch paths')
+    condition.querySelector('[data-handleid="yes"]').click()
+    document.querySelector('.react-flow__node[data-id="end"] .target').click()
+    await waitFor(() => edgePath('yes') && edgePath('yes') !== yesPath)
+    assert(edgePath('no') === noPath, 'Changing yes leaves no unchanged')
+    return 'Editor: graph, palette, selection, drag, branch connections, API save/run and error recovery passed'
   })
 
   await evaluate(4176, async () => {
