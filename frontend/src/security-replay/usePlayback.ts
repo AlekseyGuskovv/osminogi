@@ -4,7 +4,7 @@ import type { RunEvent } from '../runs/events'
 import { applyRunEvent } from '../runs/useRun'
 import type { RunView } from '../runs/useRun'
 import type { WorkflowDraft } from '../workflow'
-import { advanceTime, confirmedEdge, frameDuration, frameProgress } from './playback'
+import { advanceTime, confirmedEdge, frameDuration, frameProgress, simulationEdge } from './playback'
 import type { PlaybackSpeed, ReplayLog } from './playback'
 
 type Edge = WorkflowDraft['edges'][number]
@@ -41,11 +41,13 @@ export function usePlayback(log: ReplayLog | undefined, edges: readonly Edge[], 
         const event = events[state.index - offset]
         if (!event) break
         state.elapsed -= state.duration
-        const edge = confirmedEdge(event, state.view, edges)
+        const edge = log.source === 'simulation'
+          ? simulationEdge(event, events[state.index - offset + 1], edges)
+          : confirmedEdge(event, state.view, edges)
         state.view = applyRunEvent(state.view, event)
         state.active = { demo, repetition, view: state.view, event, edge }
         state.index++
-        state.duration = frameDuration(event, Boolean(edge))
+        state.duration = frameDuration(event, Boolean(edge), log.source)
         setFrame(state.active)
       }
       const active = state.elapsed < state.duration

@@ -43,7 +43,7 @@ async function evaluate(port, test, path = "/", reducedMotion = false) {
     function call(method, params) {
       const requestId = ++id
       return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('CDP timeout: ' + method)), 20000)
+        const timer = setTimeout(() => reject(new Error('CDP timeout: ' + method)), method === 'Runtime.evaluate' ? 75000 : 20000)
         function listen(message) {
           const response = JSON.parse(message.data)
           if (response.id !== requestId) return
@@ -1112,13 +1112,106 @@ try {
     }
   }, '/?view=runs&workflow=wf-1&run=run-2&replay=1')
 
+  await evaluate(4175, async () => {
+    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+    async function until(predicate, limit = 5000) {
+      const end = performance.now() + limit
+      while (performance.now() < end) {
+        const value = predicate()
+        if (value) return value
+        await sleep(25)
+      }
+      throw new Error('Extended demo timed out: ' + document.querySelector('.long-demo')?.innerText)
+    }
+    const button = (text, scope = document) => [...scope.querySelectorAll('button')].find(item => item.textContent === text)
+    const nativeFetch = window.fetch
+    const nativeEvents = window.EventSource
+    const requests = []
+    const canvas = await until(() => document.querySelector('.react-flow'))
+    await until(() => canvas.querySelectorAll('.react-flow__edge').length >= 7)
+    const camera = canvas.querySelector('.react-flow__viewport').style.transform
+    button('Режим демонстрации').click()
+    const entry = await until(() => button('Запустить длинное демо'))
+    await until(() => canvas.querySelector('.scanner-beam'))
+    window.fetch = (input, init) => { requests.push(String(input)); return nativeFetch(input, init) }
+    window.EventSource = class extends nativeEvents {
+      constructor(url, options) { requests.push(String(url)); super(url, options) }
+    }
+    try {
+      entry.click()
+      const panel = await until(() => document.querySelector('.long-demo'))
+      const node = (id, status) => canvas.querySelector(`[data-id="demo-${id}"] [data-execution="${status}"]`)
+      const origin = await until(() => node('start', 'running')?.querySelector('.scanner-beam'))
+      await until(() => canvas.querySelectorAll('.react-flow__node').length === 12 &&
+        canvas.querySelectorAll('.react-flow__edge').length === 12)
+      if (!panel.textContent.includes('Демо · симуляция выполнения')) throw new Error('Simulation label missing')
+      const select = panel.querySelector('.pulse-controls select')
+      const speed = value => {
+        select.value = String(value)
+        select.dispatchEvent(new Event('change', { bubbles: true }))
+      }
+      const animation = origin.getAnimations()[0]
+      speed(0.5)
+      await until(() => animation.playbackRate === 0.5)
+      button('Пауза', panel).click()
+      await until(() => animation.playState === 'paused' && !animation.pending)
+      const frozen = animation.currentTime
+      await sleep(150)
+      if (frozen !== animation.currentTime) throw new Error('Paused scanner advanced')
+      speed(2)
+      button('Продолжить', panel).click()
+      await until(() => animation.playbackRate === 2)
+      await until(() => canvas.querySelector('[data-id="demo-start:next"] .pulse-edge-core'))
+      if (node('secrets', 'running')) throw new Error('Destination scanner started before arrival')
+      button('Пауза', panel).click()
+      const offset = () => canvas.closest('.garden-canvas').style.getPropertyValue('--pulse-offset')
+      const held = offset()
+      await sleep(150)
+      if (offset() !== held) throw new Error('Paused edge advanced')
+      const started = performance.now()
+      button('Повторить анимацию', panel).click()
+      await until(() => node('start', 'running'))
+      await until(() => canvas.querySelector('[data-id="demo-gate:yes"] .pulse-edge-core'), 24000)
+      if (canvas.querySelector('[data-id="demo-gate:no"] .pulse-edge-core')) throw new Error('YES lit the wrong edge')
+      await until(() => node('telegram', 'running'))
+      await until(() => panel.querySelector('[data-ci-status="failed"]'))
+      const red = (performance.now() - started) / 1000
+      if (red < 20 || !node('finish', 'succeeded')) throw new Error('Red run incomplete')
+      button('После исправления', panel).click()
+      await until(() => !node('finish', 'succeeded'))
+      const greenStarted = performance.now()
+      button('Запустить', panel).click()
+      await until(() => canvas.querySelector('[data-id="demo-gate:no"] .pulse-edge-core'), 22000)
+      if (!node('telegram', 'skipped') || canvas.querySelector('[data-id="demo-gate:yes"] .pulse-edge-core')) {
+        throw new Error('NO did not skip Telegram')
+      }
+      await until(() => panel.querySelector('[data-ci-status="passed"]'))
+      const green = (performance.now() - greenStarted) / 1000
+      if (requests.length || document.querySelector('.react-flow') !== canvas) throw new Error('Local demo sent a request or remounted React Flow')
+      button('Выход', panel).click()
+      await until(() => !document.querySelector('.long-demo') && canvas.querySelector('.react-flow__viewport').style.transform === camera)
+      return `Extended simulation: both routes, synchronized controls, zero requests, stable Canvas; measured at 2×: red ${red.toFixed(1)}s, green ${green.toFixed(1)}s`
+    } finally {
+      window.fetch = nativeFetch
+      window.EventSource = nativeEvents
+    }
+  })
+
   await evaluate(4176, async () => {
     const { installMocks } = await import('/src/mocks/worker.ts')
     await installMocks()
     if ((await navigator.serviceWorker.getRegistrations()).length) throw new Error('Unexpected worker')
     const api = await fetch('/api/v1/snapshots')
     if (api.headers.get('content-type')?.includes('application/json')) throw new Error('Unexpected mock response')
-    return 'MSW disabled: no worker or mock response'
+    const button = text => [...document.querySelectorAll('button')].find(item => item.textContent === text)
+    button('Режим демонстрации').click()
+    for (let i = 0; i < 80 && !button('Запустить длинное демо'); i++) await new Promise(resolve => setTimeout(resolve, 25))
+    button('Запустить длинное демо').click()
+    for (let i = 0; i < 80 && !document.querySelector('[data-id="demo-start"] .scanner-beam'); i++) {
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    if (!document.querySelector('[data-id="demo-start"] .scanner-beam')) throw new Error('Local demo requires an API')
+    return 'MSW disabled: no worker or mock response, local simulation runs without FastAPI'
   })
 } finally {
   for (const child of children.reverse()) child.kill()

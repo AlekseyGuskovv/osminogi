@@ -136,3 +136,11 @@
   .garden-node[data-arrival]::before, .pulse-edge-tail, .pulse-edge-core { display: none; }
   .pulse-ci-result { animation: none; }
 }
+
+.long-demo header h2 { overflow-wrap: anywhere; }
+.long-demo > p:not(.replay-demo) { color: var(--muted); }
+.long-demo-progress { margin-block: 14px; }
+.long-demo-progress progress { display: block; width: 100%; height: 9px; margin-top: 6px; accent-color: var(--accent); }
+.long-demo-progress p { margin-block: 8px 0; }
+.long-demo .pulse-ci-result[data-ci-status] { color: var(--accent); }
+.long-demo .pulse-ci-result[data-ci-status='failed'] { color: var(--danger); }

@@ -21,6 +21,9 @@ import { Icon } from '../ui/Icon'
 import { WorkspaceNav } from '../ui/WorkspaceNav'
 import { orderGraph } from './layout'
 import { ExplainableCI } from '../security-replay/ExplainableCI'
+import { LongDemoPanel } from '../security-replay/LongDemoPanel'
+import { demoDetails, longDemoLogs, longDemoWorkflow } from '../security-replay/longDemo'
+import type { DemoScenario } from '../security-replay/longDemo'
 import { PresentationMode } from '../security-replay/PresentationMode'
 import { usePresentation } from '../security-replay/usePresentation'
 import { branchChoice, branchOf } from '../security-replay/state'
@@ -62,13 +65,13 @@ function conditionLabel(settings: Record<string, unknown>) {
   return `Риск ≥ ${severity[value as keyof typeof severity] ?? value}`
 }
 
-function fittedViewport(workflow: EditableWorkflow, width: number, height: number): Viewport {
+function fittedViewport(workflow: EditableWorkflow, width: number, height: number, minZoom = .2): Viewport {
   if (!workflow.nodes.length || width < 100 || height < 100) return { x: 0, y: 0, zoom: 1 }
   const left = Math.min(...workflow.nodes.map(node => node.x))
   const top = Math.min(...workflow.nodes.map(node => node.y))
   const graphWidth = Math.max(...workflow.nodes.map(node => node.x)) + 172 - left
   const graphHeight = Math.max(...workflow.nodes.map(node => node.y)) + 85 - top
-  const zoom = Math.max(.2, Math.min(1.22, (width - 76) / graphWidth, (height - 76) / graphHeight))
+  const zoom = Math.max(minZoom, Math.min(1.22, (width - 76) / graphWidth, (height - 76) / graphHeight))
   return {
     x: (width - graphWidth * zoom) / 2 - left * zoom,
     y: (height - graphHeight * zoom) / 2 - top * zoom,
@@ -132,6 +135,7 @@ type FlowCanvasProps = {
   nodes: Block[]
   edges: Edge[]
   pending: boolean
+  overview: boolean
   onInit: (instance: ReactFlowInstance<Block>) => void
   onMoveStart: (event: MouseEvent | TouchEvent | null) => void
   onPositionCommit: (positions: Map<string, { x: number; y: number }>) => void
@@ -142,7 +146,7 @@ type FlowCanvasProps = {
 }
 
 const FlowCanvas = memo(function FlowCanvas({
-  nodes, edges, pending, onInit, onMoveStart, onPositionCommit, onConnect, onPickNode, onPickEdge, onClearSelection,
+  nodes, edges, pending, overview, onInit, onMoveStart, onPositionCommit, onConnect, onPickNode, onPickEdge, onClearSelection,
 }: FlowCanvasProps) {
   const [localNodes, setLocalNodes] = useNodesState(nodes)
   useEffect(() => {
@@ -168,11 +172,12 @@ const FlowCanvas = memo(function FlowCanvas({
   }, [onPositionCommit, setLocalNodes])
 
   return <ReactFlow nodes={localNodes} edges={edges} nodeTypes={flowNodeTypes} edgeTypes={flowEdgeTypes}
-    className="dark" minZoom={.2} maxZoom={2} zIndexMode="manual"
-    nodesDraggable={!pending} nodesConnectable={!pending} deleteKeyCode={null}
+    className="dark" minZoom={overview ? .08 : .2} maxZoom={2} zIndexMode="manual"
+    nodesDraggable={!pending} nodesConnectable={!pending} elementsSelectable={!overview} deleteKeyCode={null}
     onInit={onInit} onMoveStart={onMoveStart} onNodesChange={changeNodes} onConnect={onConnect}
-    onNodeClick={(_, node) => onPickNode(node.id)} onEdgeClick={(_, edge) => onPickEdge(edge.id)}
-    onPaneClick={onClearSelection}>
+    onNodeClick={overview ? undefined : (_, node) => onPickNode(node.id)}
+    onEdgeClick={overview ? undefined : (_, edge) => onPickEdge(edge.id)}
+    onPaneClick={overview ? undefined : onClearSelection}>
     <Background color="#33464e" gap={24} size={1.2} />
     <Controls showInteractive={false} />
   </ReactFlow>
@@ -193,10 +198,16 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
   const [ciRun, setCiRun] = useState<Run>()
   const [explanationOpen, setExplanationOpen] = useState(Boolean(explain))
   const [demoOpen, setDemoOpen] = useState(false)
+  const [longDemo, setLongDemo] = useState(false)
+  const [longStarted, setLongStarted] = useState(false)
+  const [scenario, setScenario] = useState<DemoScenario>('critical')
+  const [followReady, setFollowReady] = useState(false)
+  const followTouched = useRef(false)
+  const displayedWorkflow = longDemo ? longDemoWorkflow : workflow
   const [demoStage, setDemoStage] = useState(0)
   const [demoCompareRun, setDemoCompareRun] = useState<Run>()
   const savedCamera = useRef<Viewport | undefined>(undefined)
-  const demo = usePresentation(demoOpen, demoStage, workflow?.id)
+  const demo = usePresentation(demoOpen && !longDemo, demoStage, workflow?.id)
   const [snapshots, setSnapshots] = useState<SnapshotRef[]>([])
   const [draftWarnings, setDraftWarnings] = useState<string[]>([])
   const [snapshotId, setSnapshotId] = useState('')
@@ -208,7 +219,8 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
   const pending = saving || starting
   const { view: runView, log: liveLog } = useRecordedRun(accepted?.id)
   const [speed, setSpeed] = useState<PlaybackSpeed>(1)
-  const playback = usePlayback(demoOpen ? demo.log : liveLog, workflow?.edges ?? noEdges, speed, canvas, demoOpen)
+  const playbackLog = longDemo ? longStarted ? longDemoLogs[scenario] : undefined : demoOpen ? demo.log : liveLog
+  const playback = usePlayback(playbackLog, displayedWorkflow?.edges ?? noEdges, speed, canvas, demoOpen)
   const runStatus = runView?.status ?? accepted?.status
   const visualFinished = playback.event?.type === 'run.finished' && !playback.playing
   const visualRun = !demoOpen && (!liveLog || visualFinished) ? runView : playback.view
@@ -222,9 +234,10 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
   const factCi = demoOpen ? demo.run?.ci : runView?.ci
   const criticalNode = factCi?.reason === 'CRITICAL_FOUND' ? factCi.nodeId : undefined
   const criticalFinding = factCi?.reason === 'CRITICAL_FOUND' ? factCi.findingId : undefined
-  const activeLabel = workflow?.nodes.find(node => node.id === (playback.edge?.from ?? pulseNode))?.type
+  const activeDemoNode = displayedWorkflow?.nodes.find(node => node.id === (playback.edge?.from ?? pulseNode))
+  const activeLabel = activeDemoNode && labels[activeDemoNode.type][0]
   const explanationRun = demoOpen && demoStage === 1 ? demo.run : explanationOpen ? ciRun : undefined
-  const highlightRun = demoOpen ? demoStage === 3 ? demoCompareRun : explanationRun : ciRun
+  const highlightRun = longDemo ? undefined : demoOpen ? demoStage === 3 ? demoCompareRun : explanationRun : ciRun
   const [notice, setNotice] = useState<{ text: string; error?: boolean }>()
   const dirty = workflow && (!workflow.id || JSON.stringify({ ...workflow, snapshotId: snapshotId || undefined }) !== JSON.stringify(savedWorkflow))
   const hasStart = workflow?.nodes.some(node => node.type === 'start')
@@ -241,7 +254,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
     const element = canvas.current
     if (!element) return
     const header = element.querySelector<HTMLElement>('.garden-canvas-header')
-    void flow.current?.setViewport(fittedViewport(draft, element.clientWidth, element.clientHeight - (header?.offsetHeight ?? 0)))
+    void flow.current?.setViewport(fittedViewport(draft, element.clientWidth, element.clientHeight - (header?.offsetHeight ?? 0), draft.id === longDemoWorkflow.id ? .08 : .2))
   }, [])
 
   const initializeFlow = useCallback((instance: ReactFlowInstance<Block>) => {
@@ -257,6 +270,44 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
     return () => cancelAnimationFrame(frame)
   }, [demoOpen, fit])
 
+  useEffect(() => {
+    if (!longDemo) return
+    const frame = requestAnimationFrame(() => fit(longDemoWorkflow))
+    const timer = setTimeout(() => setFollowReady(true), 850)
+    return () => { cancelAnimationFrame(frame); clearTimeout(timer) }
+  }, [longDemo, fit])
+
+  useEffect(() => {
+    if (!longDemo || !followReady || !activeDemoNode || playback.paused || followTouched.current ||
+      matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const instance = flow.current
+    const element = canvas.current
+    if (!instance || !element) return
+    const viewport = instance.getViewport()
+    const right = element.clientWidth
+    const centerX = activeDemoNode.x + 86
+    const projected = centerX * viewport.zoom + viewport.x
+    const zoom = Math.min(.9, right / 550)
+    if (viewport.zoom >= zoom - .015 && projected > right * .13 && projected < right * .74) return
+    void instance.setCenter(centerX + right * .17 / zoom, 108 + activeDemoNode.y / 2, { zoom, duration: 750 })
+  }, [longDemo, followReady, activeDemoNode, playback.paused])
+
+  function enterLongDemo() {
+    followTouched.current = false
+    setFollowReady(false)
+    setScenario('critical')
+    setLongStarted(true)
+    setLongDemo(true)
+    playback.restart()
+  }
+
+  function leaveLongDemo() {
+    setLongDemo(false)
+    setLongStarted(false)
+    playback.restart()
+    requestAnimationFrame(() => { if (draftRef.current) fit(draftRef.current) })
+  }
+
   function openDemo() {
     savedCamera.current = flow.current?.getViewport()
     cameraTouched.current = true
@@ -267,6 +318,8 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
   }
 
   function closeDemo() {
+    setLongDemo(false)
+    setLongStarted(false)
     setDemoOpen(false)
     if (savedCamera.current) void flow.current?.setViewport(savedCamera.current)
   }
@@ -281,7 +334,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
   }
 
   const markCameraTouched = useCallback((event: MouseEvent | TouchEvent | null) => {
-    if (event) cameraTouched.current = true
+    if (event) { cameraTouched.current = true; followTouched.current = true }
   }, [])
 
   useEffect(() => {
@@ -462,9 +515,9 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
     }
   }
 
-  const nodes = useMemo<Block[]>(() => (workflow?.nodes ?? []).map(node => ({
+  const nodes = useMemo<Block[]>(() => (displayedWorkflow?.nodes ?? []).map(node => ({
     id: node.id, type: 'workflow', zIndex: 2, position: { x: node.x, y: node.y },
-    data: { kind: node.type, detail: node.type === 'condition' ? conditionLabel(node.settings) : undefined, status: visualRun?.nodes[node.id]?.status,
+    data: { kind: node.type, detail: longDemo ? demoDetails.get(node.id) : node.type === 'condition' ? conditionLabel(node.settings) : undefined, status: visualRun?.nodes[node.id]?.status,
       scanner: playbackView?.nodes[node.id]?.status === 'running' ? scanner : undefined,
       arrival: playback.edge?.to === node.id,
       branch: branchOf(visualRun?.nodes[node.id]?.output) ?? visualRun?.nodes[node.id]?.branch,
@@ -472,8 +525,8 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
       highlighted: highlight?.nodeIds.includes(node.id),
       ciPassed: highlightRun?.ci.status === 'passed',
       muted: Boolean(explanationRun && highlight?.nodeIds.length && !highlight.nodeIds.includes(node.id)) }, selected: node.id === selectedId,
-  })), [workflow?.nodes, visualRun, highlight, selectedId, explanationRun, highlightRun, pulseNode, playbackView, scanner, playback.edge, criticalNode, criticalFinding])
-  const edges = useMemo(() => (workflow?.edges ?? []).map(edge => {
+  })), [displayedWorkflow?.nodes, longDemo, visualRun, highlight, selectedId, explanationRun, highlightRun, pulseNode, playbackView, scanner, playback.edge, criticalNode, criticalFinding])
+  const edges = useMemo(() => (displayedWorkflow?.edges ?? []).map(edge => {
     const highlighted = highlight?.edge?.from === edge.from && highlight.edge.branch === edge.branch
     const id = `${edge.from}:${edge.branch}`
     const related = selectedEdge === id || (selectedId !== '' && (edge.from === selectedId || edge.to === selectedId))
@@ -488,7 +541,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
       style: { stroke: color, strokeWidth: highlighted || related || choice === 'taken' ? 2.6 : 1.6, opacity: choice === 'alternate' ? .32 : undefined },
       className: highlighted ? 'garden-ci-edge' : related ? 'garden-related-edge' : undefined,
     }
-  }), [workflow?.edges, highlight, selectedId, selectedEdge, visualRun, highlightRun, playback.edge])
+  }), [displayedWorkflow?.edges, highlight, selectedId, selectedEdge, visualRun, highlightRun, playback.edge])
 
   return (
     <div className="garden-shell" data-replay-open={demoOpen}>
@@ -502,11 +555,13 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
             <span className="garden-save-state" data-dirty={Boolean(dirty)}>{saving ? 'Сохранение…' : dirty ? 'Есть изменения' : 'Сохранено'}</span>
           </div>}
         </div>
-        {workflow && <div className="garden-actions">
+        <div className="garden-actions">
           <button type="button" disabled={pending} onClick={openDemo}>Режим демонстрации</button>
-          <button disabled={pending} onClick={() => void submit('save')}>Сохранить</button>
-          <button className="garden-primary" disabled={pending || !workflow.id || !snapshotId} onClick={() => void submit('run')}>▷ Запустить</button>
-        </div>}
+          {workflow && <>
+            <button disabled={pending} onClick={() => void submit('save')}>Сохранить</button>
+            <button className="garden-primary" disabled={pending || !workflow.id || !snapshotId} onClick={() => void submit('run')}>▷ Запустить</button>
+          </>}
+        </div>
       </section>
       {workflow && <div className="garden-toolbar">
         <div className="garden-toolbar-group"><a href="?workflow=new"><Icon name="plus" size={15} />Новый сценарий</a>
@@ -560,14 +615,20 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
       </section>}
       {loading && <p className="garden-notice" role="status">Загрузка сценария…</p>}
       {!loading && !workflow && <button className="garden-retry" onClick={() => { setLoading(true); setNotice(undefined); setLoadAttempt(attempt => attempt + 1) }}>Повторить</button>}
-      {demoOpen && <PresentationMode stage={demoStage} setStage={stage => {
+      {demoOpen && (longDemo ? <LongDemoPanel scenario={scenario} started={longStarted} onScenario={next => {
+        if (next === scenario) return
+        setScenario(next)
+        setLongStarted(false)
+        playback.restart()
+      }} onStart={() => { setLongStarted(true); playback.restart() }} onBack={leaveLongDemo} onClose={closeDemo}
+        playback={playback} onSpeed={setSpeed} activeLabel={activeLabel} /> : <PresentationMode stage={demoStage} setStage={stage => {
         setDemoStage(stage)
         setDemoCompareRun(undefined)
         if (stage === 0) playback.restart()
       }} onClose={closeDemo} run={demo.run} error={demo.error} playback={playback} speed={speed} onSpeed={setSpeed}
-        activeLabel={activeLabel && labels[activeLabel][0]} onFocus={focusEvidence}
-        onCompare={setDemoCompareRun} />}
-      {workflow && <div className="garden-workspace" data-inspector-collapsed={inspectorCollapsed} data-explain-open={!demoOpen && Boolean(explanationRun)}>
+        activeLabel={activeLabel} onFocus={focusEvidence}
+        onCompare={setDemoCompareRun} onLongDemo={enterLongDemo} />)}
+      {displayedWorkflow && <div className="garden-workspace" data-inspector-collapsed={inspectorCollapsed} data-explain-open={!demoOpen && Boolean(explanationRun)}>
         <aside className="garden-panel garden-palette" aria-label="Палитра">
           <h2>Палитра блоков</h2>
           {palette.map(group => <section key={group.title}><h3>{group.title}</h3>
@@ -585,16 +646,16 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
             })}
           </section>)}
         </aside>
-        <section ref={canvas} className="garden-canvas" aria-label="Граф сценария" onDragOver={allowPaletteDrop} onDrop={dropBlock}>
-          <div className="garden-canvas-header"><div><Icon name="graph" size={16} /><strong>Граф сценария</strong></div>
+        <section ref={canvas} className="garden-canvas" aria-label="Граф сценария" onDragOver={demoOpen ? undefined : allowPaletteDrop} onDrop={demoOpen ? undefined : dropBlock}>
+          <div className="garden-canvas-header"><div><Icon name="graph" size={16} /><strong>{longDemo ? "Учебный граф" : "Граф сценария"}</strong></div>
             <button className="garden-inspector-toggle" onClick={() => { setInspectorCollapsed(false); setInspectorOpen(open => !open) }} aria-expanded={inspectorOpen} aria-controls="workflow-inspector"><Icon name="panel" size={16} />Настройки</button>
           </div>
-          <FlowCanvas nodes={nodes} edges={edges} pending={pending || demoOpen} onInit={initializeFlow} onMoveStart={markCameraTouched}
+          <FlowCanvas nodes={nodes} edges={edges} overview={longDemo} pending={pending || demoOpen} onInit={initializeFlow} onMoveStart={markCameraTouched}
             onPositionCommit={commitPositions} onConnect={linkBlocks} onPickNode={pickNode}
             onPickEdge={pickEdge} onClearSelection={clearSelection} />
           <button className="garden-layout" type="button" disabled={pending} onClick={order}><Icon name="layout" size={15} />Упорядочить</button>
         </section>
-        {!demoOpen && explanationRun
+        {!longDemo && workflow && (!demoOpen && explanationRun
           ? <aside className="replay-inspector"><ExplainableCI key={explanationRun.id} run={explanationRun}
             onClose={() => setExplanationOpen(false)} onFocus={focusEvidence} /></aside>
           : <aside ref={inspector} className="garden-panel garden-settings" id="workflow-inspector" data-open={inspectorOpen} aria-label="Настройки блока">
@@ -633,7 +694,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
             <h3>Выберите блок</h3><p>Нажмите на блок на холсте, чтобы открыть его настройки и посмотреть связи.</p>
             <dl><dt>Блоки</dt><dd>{workflow.nodes.length}</dd><dt>Связи</dt><dd>{workflow.edges.length}</dd></dl>
           </div>}
-        </aside>}
+        </aside>)}
       </div>}
       </main>
     </div>

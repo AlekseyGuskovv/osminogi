@@ -11,7 +11,7 @@ export type PlaybackSpeed = typeof speeds[number]
 export const scannerDuration = 1800
 export const historyLimit = 160
 
-export type ReplayLog = { base: RunView; events: readonly RunEvent[]; offset: number }
+export type ReplayLog = { base: RunView; events: readonly RunEvent[]; offset: number; source?: 'simulation' }
 
 export function emptyReplay(id: string): ReplayLog {
   return { base: { id, status: 'queued', nodes: {} }, events: [], offset: 0 }
@@ -30,10 +30,13 @@ export function advanceTime(elapsed: number, delta: number, speed: PlaybackSpeed
   return paused ? elapsed : elapsed + Math.max(0, delta) * speed
 }
 
-export function frameDuration(event: RunEvent, travels: boolean) {
+export function frameDuration(event: RunEvent, travels: boolean, source?: ReplayLog['source']) {
   if (event.type === 'run.finished') return 650
   if (event.type !== 'node.status' || event.data.status === 'skipped' || event.data.status === 'queued') return 0
-  return travels ? 2050 : event.data.status === 'running' ? scannerDuration : 900
+  if (travels) return 2050
+  if (event.data.status === 'running') return scannerDuration
+  if (source === 'simulation' && event.data.status === 'succeeded') return 200
+  return 900
 }
 
 export function frameProgress(elapsed: number, travels: boolean) {
@@ -53,4 +56,13 @@ export function confirmedEdge(event: RunEvent, previous: RunView, edges: readonl
   const source = previous.lastNodeEvent?.id
   if (!source || previous.nodes[source]?.status !== 'succeeded') return
   return edges.find(edge => edge.branch === 'next' && edge.from === source && edge.to === event.data.nodeId)
+}
+
+export function simulationEdge(event: RunEvent, next: RunEvent | undefined, edges: readonly Edge[]) {
+  if (event.type !== 'node.status' || event.data.status !== 'succeeded' ||
+      next?.type !== 'node.status' || next.data.status !== 'running') return
+  const branch = branchOf(event.data.output) ?? 'next'
+  const source = event.data.nodeId
+  const target = next.data.nodeId
+  return edges.find(edge => edge.from === source && edge.to === target && edge.branch === branch)
 }

@@ -15,10 +15,10 @@ const titles = [
   'Проверка пройдена',
 ]
 
-export function PresentationMode({ stage, setStage, onClose, run, error, playback, speed, onSpeed, activeLabel, onFocus, onCompare }: {
+export function PresentationMode({ stage, setStage, onClose, run, error, playback, speed, onSpeed, activeLabel, onFocus, onCompare, onLongDemo }: {
   stage: number; setStage: (stage: number) => void; onClose: () => void
   run?: Run; error: string; playback: Playback; speed: PlaybackSpeed; onSpeed: (speed: PlaybackSpeed) => void; activeLabel?: string
-  onFocus: (id: string) => void; onCompare: (run: Run | undefined) => void
+  onLongDemo: () => void; onFocus: (id: string) => void; onCompare: (run: Run | undefined) => void
 }) {
   useEffect(() => {
     function key(event: KeyboardEvent) {
@@ -47,6 +47,7 @@ export function PresentationMode({ stage, setStage, onClose, run, error, playbac
       <button disabled={stage === 0} onClick={() => setStage(stage - 1)}>Назад</button>
       <button disabled={stage === 3} onClick={() => setStage(stage + 1)}>Далее</button>
     </div>
+    <button type="button" onClick={onLongDemo}>Запустить длинное демо</button>
     {stage === 0 && <PlaybackControls playback={playback} speed={speed} onSpeed={onSpeed} />}
     {run && stage === 0 && <div>
       <p>Запись событий {run.id}</p>
