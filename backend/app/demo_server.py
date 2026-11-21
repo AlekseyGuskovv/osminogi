@@ -23,7 +23,9 @@ from .api_schema import OPENAPI
 from .ml.live_draft import generate_workflow
 from .ml.provider import ModelError, build_provider
 from .node_templates import generate_node_template, save_node_template
-from .project_import import ArchiveTooLarge, MAX_UPLOAD, read_organizer_project, read_project
+from .project_import import (
+    ArchiveTooLarge, MAX_UPLOAD, ORGANIZER_COMMIT, ORGANIZER_REPOSITORY, read_organizer_project, read_project,
+)
 from .store import Store
 
 
@@ -62,6 +64,21 @@ def snapshot_catalog(snapshot_id):
     row = STORE.get("snapshot", snapshot_id)
     text = row.get("organizerCatalog") if row else None
     return parse_catalog(text, "organizer") if text is not None else CATALOG.current()
+
+
+def import_organizer_snapshot(url):
+    if url != ORGANIZER_REPOSITORY:
+        raise ApiError(422, "REPOSITORY_NOT_ALLOWED", "Выберите учебный репозиторий организаторов.")
+    snapshot_id = f"organizer-{ORGANIZER_COMMIT}"
+    cached = STORE.get("snapshot", snapshot_id)
+    if cached:
+        return snapshot_ref(cached)
+    try:
+        snapshot, catalog = read_organizer_project(url, snapshot_id)
+        parse_catalog(catalog, "organizer")
+    except (URLError, OSError) as error:
+        raise ApiError(502, "REPOSITORY_UNAVAILABLE", "GitHub не отдал архив. Повторите позже или загрузите ZIP.") from error
+    return save_snapshot(snapshot, "TBagirov/training · проект организаторов", organizer_catalog=catalog)
 
 
 def training_run(variant):
@@ -376,12 +393,7 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(data, dict):
                 raise ValueError("Ожидался JSON-объект.")
             if path == "/snapshots/import-repository":
-                try:
-                    snapshot, catalog = read_organizer_project(data.get("url"), uuid4().hex)
-                    parse_catalog(catalog, "organizer")
-                except (URLError, OSError) as error:
-                    raise ApiError(502, "REPOSITORY_UNAVAILABLE", "GitHub не отдал архив. Повторите позже или загрузите ZIP.") from error
-                self.reply(201, save_snapshot(snapshot, "TBagirov/training · проект организаторов", organizer_catalog=catalog))
+                self.reply(201, import_organizer_snapshot(data.get("url")))
                 return
             if path == "/training/runs":
                 self.reply(202, training_run(data.get("variant")))

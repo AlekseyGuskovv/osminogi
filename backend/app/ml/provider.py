@@ -8,7 +8,11 @@ from typing import Protocol
 
 
 class LlmProvider(Protocol):
-    def generate_json(self, system: str, payload: dict) -> dict: ...
+    def generate_json(self, system: str, payload: dict, *, schema: dict | None = None) -> dict: ...
+
+
+def object_schema(properties: dict) -> dict:
+    return {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False}
 
 
 class ModelError(RuntimeError):
@@ -20,7 +24,7 @@ class ModelError(RuntimeError):
 class CodexProvider:
     _consumer = Lock()
 
-    def generate_json(self, system: str, payload: dict) -> dict:
+    def generate_json(self, system: str, payload: dict, *, schema: dict | None = None) -> dict:
         default = Path(__file__).resolve().parents[5] / "AiStaff" / "CodexGenerator"
         root = Path(os.environ.get("GARDEN_CODEX_DIR", default)).expanduser().resolve()
         python = root / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
@@ -58,10 +62,11 @@ class OllamaProvider:
     def __init__(self, model: str, port: int):
         self.model, self.port = model, port
 
-    def generate_json(self, system: str, payload: dict) -> dict:
-        body = json.dumps({"model": self.model, "system": system,
-                           "prompt": json.dumps(payload, ensure_ascii=False),
-                           "format": "json", "stream": False, "think": False,
+    def generate_json(self, system: str, payload: dict, *, schema: dict | None = None) -> dict:
+        prompt = (system + "\nВходные данные:\n" + json.dumps(payload, ensure_ascii=False)
+                  + "\nСформируй JSON-ответ по описанной структуре.")
+        body = json.dumps({"model": self.model, "prompt": prompt,
+                           "format": schema if schema is not None else "json", "stream": False, "think": False,
                            "options": {"temperature": 0}}).encode()
         connection = HTTPConnection("127.0.0.1", self.port, timeout=90)
         try:
