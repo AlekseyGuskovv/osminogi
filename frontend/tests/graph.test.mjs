@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { addNode, connect } from '../src/editor/graph.ts'
+import { addNode, connect, removeNode } from '../src/editor/graph.ts'
 
 test('addNode allocates unique IDs and preserves workflow metadata and inputs', () => {
   const draft = { id: 'wf-1', revision: 3, name: 'Проверка', schedule: null, nodes: [], edges: [] }
@@ -62,4 +62,13 @@ test('connect rejects invalid branches, endpoints and cycles', () => {
   ]) {
     assert.equal(connect(draft, edge), draft)
   }
+})
+
+test('removeNode removes outgoing and incoming edges and keeps unrelated entries', () => {
+  const draft = connectionDraft()
+  const next = removeNode(draft, 'gate')
+  assert.deepEqual(next.nodes.map(node => node.id), ['start', 'scan', 'end'])
+  assert.deepEqual(next.edges, [{ from: 'scan', to: 'end', branch: 'next' }])
+  assert.equal(draft.edges.length, 4)
+  assert.equal(removeNode(next, 'missing'), next)
 })

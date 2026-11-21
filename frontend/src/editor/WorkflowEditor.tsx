@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { getJson, postJson } from '../api'
 import { nodeTypes } from '../workflow'
 import type { NodeType, Workflow } from '../workflow'
-import { addNode, connect } from './graph'
+import { addNode, connect, removeNode } from './graph'
 import '@xyflow/react/dist/style.css'
 import './editor.css'
 
@@ -164,6 +164,10 @@ export function WorkflowEditor({ workflowId }: EditorProps) {
             {activeNode.type === 'condition' && <p>Порог · {String(activeNode.settings.value ?? '—')}</p>}
             {activeNode.type === 'telegram' && <p>Канал · {String(activeNode.settings.channelId ?? '—')}</p>}
             <dl><dt>X</dt><dd>{Math.round(activeNode.x)}</dd><dt>Y</dt><dd>{Math.round(activeNode.y)}</dd></dl>
+            <button disabled={pending} onClick={() => {
+              setWorkflow(current => current && removeNode(current, selectedId))
+              setSelectedId('')
+            }}>Удалить блок</button>
           </> : <p>Выберите блок на холсте.</p>}
         </aside>
       </div>}

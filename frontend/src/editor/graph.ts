@@ -40,3 +40,12 @@ export function connect<Draft extends WorkflowDraft>(draft: Draft, edge: Workflo
 
   return { ...draft, edges: [...edges, edge] }
 }
+
+export function removeNode<Draft extends WorkflowDraft>(draft: Draft, nodeId: string): Draft {
+  if (!draft.nodes.some(node => node.id === nodeId)) return draft
+  return {
+    ...draft,
+    nodes: draft.nodes.filter(node => node.id !== nodeId),
+    edges: draft.edges.filter(edge => edge.from !== nodeId && edge.to !== nodeId),
+  }
+}

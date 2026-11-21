@@ -153,7 +153,13 @@ try {
     document.querySelector('.react-flow__node[data-id="end"] .target').click()
     await waitFor(() => edgePath('yes') && edgePath('yes') !== yesPath)
     assert(edgePath('no') === noPath, 'Changing yes leaves no unchanged')
-    return 'Editor: graph, palette, selection, drag, branch connections, API save/run and error recovery passed'
+    condition.querySelector('.garden-node').click()
+    await waitFor(() => settings.querySelector('button'))
+    settings.querySelector('button').click()
+    await waitFor(() => !document.querySelector('.react-flow__node[data-id="gate"]'))
+    assert(!edgePath('yes') && !edgePath('no'), 'Deleted block has no outgoing edges')
+    assert(document.querySelectorAll('.react-flow__edge').length === 4, 'Incoming edge removed; unrelated edges preserved')
+    return 'Editor: graph, palette, selection, drag, branch connections, deletion, API save/run and error recovery passed'
   })
 
   await evaluate(4176, async () => {

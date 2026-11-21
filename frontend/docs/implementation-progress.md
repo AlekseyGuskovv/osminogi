@@ -7,6 +7,7 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | 4 | Workflow Editor | `feat/4-workflow-editor` | `e9a2c0d` | Сборка, линтер, строгий TypeScript, Chrome | Опубликовано | MSW, перетаскивание, сохранение, запуск и сохранение черновика при ошибке. |
 | 5 | Add Node | `feat/5-add-node` | `7a47f8f` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Уникальные ID и независимые настройки. |
-| 6 | Connect Nodes | `feat/6-connect-nodes` | HEAD ветки | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Готово к публикации | Независимые ветки и защита от циклов. |
+| 6 | Connect Nodes | `feat/6-connect-nodes` | `c0dc011` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Независимые ветки и защита от циклов. |
+| 7 | Remove Node | `feat/7-remove-node` | HEAD ветки | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Готово к публикации | Удаление блока и всех его связей. |
 
-Следующая задача — Task 7, `removeNode`.
+Следующая задача — Task 8, настройки блоков.
