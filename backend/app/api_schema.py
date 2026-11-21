@@ -93,7 +93,7 @@ SCHEMAS = {
     "FindingHistory": obj(["findingId", "entries"], findingId=STRING,
                           entries=array(obj(["runId", "state"], runId=STRING, state=choice("found", "resolved", "returned")))),
     "ThresholdPreview": obj(["nodeId", "value", "branch", "wouldNotify"], nodeId=STRING,
-                            value={"type": ["integer", "string"]}, branch=choice("yes", "no"), wouldNotify=BOOL),
+                            value={"type": ["integer", "string", "object"]}, branch=choice("yes", "no"), wouldNotify=BOOL),
     "FixPreview": obj(["previewId", "path", "line", "before", "after"], previewId=STRING, path=STRING,
                       line=INTEGER, before=STRING, after=STRING),
 }
@@ -145,7 +145,7 @@ PATHS = {
     "/runs/{id}/report": describe(operation("get", 200, obj(["findings"], findings=array(MAP)),
                                              params=({"name":"format","in":"query","schema":choice("json","markdown")},))),
     "/runs/{id}/threshold-preview": describe(operation("post", 200, ref("ThresholdPreview"),
-                                                       obj(["nodeId", "value"], nodeId=STRING, value={"type":["integer","string"]}))),
+                                                       obj(["nodeId", "value"], nodeId=STRING, value={"type":["integer","string","object"]}))),
     "/runs/{id}/fix-preview": describe(operation("post", 200, ref("FixPreview"), obj(["findingId"], findingId=STRING))),
     "/runs/{id}/apply-fix": describe(operation("post", 201, obj(["snapshotId"], snapshotId=STRING),
                                                 obj(["previewId"], previewId=STRING))),

@@ -3,6 +3,7 @@ import re
 
 from .analysis.coverage import summarize_coverage
 from .analysis.sca import DependencyScanner
+from .conditions import LEVELS, match_rules, title_matches
 from .ml.live import generate_report
 from .ml.provider import ModelError
 from .telegram import DeliveryError
@@ -10,24 +11,20 @@ from .telegram import DeliveryError
 
 REQUIRED_SCANS = {"secrets", "sca", "sast"}
 SCAN_TYPES = {"secrets": "secrets", "deps": "sca", "code": "sast", "gradle": "gradle"}
-LEVELS = {"low": -1, "medium": 0, "high": 1, "critical": 2}
 LINEAR = {"start", "ai", "coverage", *SCAN_TYPES}
 TERMINAL = {"finish", "telegram"}
 
 
 def condition(node, findings):
+    if "ruleSettings" in node:
+        return match_rules(node["ruleSettings"], findings)
     metric, value = node.get("metric", "severity"), node.get("threshold", 2)
     if metric == "severity" and type(value) is int and value in (-1, 0, 1, 2):
         return any(LEVELS[item.severity] >= value for item in findings)
     if metric == "count" and type(value) is int and 0 <= value <= 5000:
         return len(findings) >= value
     if metric == "title":
-        # Accept ordinary patterns without groups, backreferences or nested repetition.
-        if (isinstance(value, str) and 0 < len(value) <= 80
-                and not any(char in value for char in "(){}\\")
-                and len(re.findall(r"[*+?]", value)) <= 1):
-            pattern = re.compile(value, re.IGNORECASE)
-            return any(pattern.search(item.title) for item in findings)
+        return title_matches(value, findings)
     raise ValueError("Неверное условие ветвления.")
 
 

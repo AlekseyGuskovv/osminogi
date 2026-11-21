@@ -75,10 +75,14 @@ class WordApi:
         inputs = row.get("steps", {}).get(node_id, {}).get("inputFindings") if isinstance(node_id, str) else None
         if node is None or inputs is None:
             raise ApiError(422, "CONDITION_UNAVAILABLE", "Нет сохранённого входа для этого блока.")
-        metric = node.get("metric", "severity")
-        threshold = (-1 if value == "low" else SEVERITIES.index(value)) if metric == "severity" else value
         facts = [Finding(**item) for item in inputs]
-        branch = "yes" if self.condition({**node, "threshold": threshold}, facts) else "no"
+        if "ruleSettings" in node:
+            candidate = {**node, "ruleSettings": value}
+        else:
+            metric = node.get("metric", "severity")
+            threshold = (-1 if value == "low" else SEVERITIES.index(value)) if metric == "severity" else value
+            candidate = {**node, "threshold": threshold}
+        branch = "yes" if self.condition(candidate, facts) else "no"
         nodes = {item["id"]: item for item in graph["nodes"]}
         snapshot = self.project(row["snapshotId"])
         catalog = self.snapshot_catalog(snapshot.id)

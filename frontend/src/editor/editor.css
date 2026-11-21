@@ -53,6 +53,8 @@
 .garden-run-errors p { margin: 3px 0; }
 .garden-run-errors small { color: var(--muted); }
 .garden-catalog-meta { overflow-wrap: anywhere; }
+.garden-condition-rule { min-width: 0; border: 1px solid var(--border); border-radius: 8px; margin-block: 8px; }
+.garden-condition-rule select, .garden-condition-rule input { width: 100%; }
 .garden-snapshot-picker { flex-wrap: wrap; }
 .garden-snapshot-picker label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
 .garden-snapshot-picker select { max-width: 196px; }

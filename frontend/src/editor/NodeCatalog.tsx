@@ -1,9 +1,24 @@
 import { useRef, useState } from 'react'
 import { getJson, postJson } from '../api'
+import { ConditionRules } from './ConditionRules'
 import type { WorkflowDraft } from '../workflow'
 
 type Draft = Pick<WorkflowDraft['nodes'][number], 'type' | 'settings'> & { name: string; description: string }
 type Template = Draft & { id: string }
+const examples: Draft[] = [
+  { name: '5 находок, 1 критическая', description: 'Ветка «Да», если всего ровно 5 находок и ровно одна из них критическая.',
+    type: 'condition', settings: { mode: 'all', rules: [
+      { metric: 'findingCount', operator: 'eq', value: 5 },
+      { metric: 'filteredCount', operator: 'eq', value: 1, severity: 'critical', category: 'any' },
+    ] } },
+  { name: 'Секрет или риск в зависимости', description: 'Ветка «Да», если есть секрет либо критическая находка в зависимостях.',
+    type: 'condition', settings: { mode: 'any', rules: [
+      { metric: 'filteredCount', operator: 'gt', value: 0, severity: 'any', category: 'SECRET' },
+      { metric: 'filteredCount', operator: 'gt', value: 0, severity: 'critical', category: 'SCA' },
+    ] } },
+  { name: 'Находки в конфигурации', description: 'Ветка «Да», если есть находка в файле application.yml.',
+    type: 'condition', settings: { mode: 'all', rules: [{ metric: 'findingPath', operator: 'contains', value: 'application.yml' }] } },
+]
 
 export function NodeCatalog({ disabled, onInsert }: {
   disabled: boolean; onInsert: (template: Template) => boolean
@@ -32,6 +47,10 @@ export function NodeCatalog({ disabled, onInsert }: {
     <dialog className="garden-dialog garden-integration-dialog" ref={dialog} aria-labelledby="node-catalog-title">
       <h2 id="node-catalog-title">Каталог AI-нод</h2>
       <p>Опишите задачу, сохраните результат и добавьте блок в сценарий.</p>
+      <div className="garden-integration-actions" aria-label="Готовые примеры условий">
+        {examples.map(example => <button key={example.name} type="button" disabled={busy}
+          onClick={() => { setError(''); setDraft(example) }}>{example.name}</button>)}
+      </div>
       {templates.length > 0 && <div className="garden-integration-actions">
         <select aria-label="Сохранённый блок" value={selected} onChange={event => setSelected(event.target.value)}>
           <option value="">Выберите сохранённый блок</option>
@@ -45,7 +64,7 @@ export function NodeCatalog({ disabled, onInsert }: {
       </div>}
       <label>Что должен делать блок?
         <textarea rows={3} maxLength={2000} value={prompt} onChange={event => setPrompt(event.target.value)}
-          placeholder="Например, проверить, есть ли хотя бы три находки" />
+          placeholder="Например, если ровно 5 находок и одна из них критическая" />
       </label>
       <button className="garden-primary" type="button" disabled={busy || !prompt.trim()} onClick={() => void request(async () => {
         setDraft(undefined)
@@ -54,6 +73,8 @@ export function NodeCatalog({ disabled, onInsert }: {
       {draft && <div className="garden-integration-fields">
         <label>Название<input value={draft.name} maxLength={80} onChange={event => setDraft({ ...draft, name: event.target.value })} /></label>
         <label>Описание<textarea rows={2} maxLength={300} value={draft.description} onChange={event => setDraft({ ...draft, description: event.target.value })} /></label>
+        {draft.type === 'condition' && <ConditionRules settings={draft.settings} disabled={busy}
+          onChange={settings => setDraft({ ...draft, settings })} />}
         <button type="button" disabled={busy || !draft.name.trim()} onClick={() => void request(async () => {
           const item = await postJson<Template>('/node-templates', draft)
           setTemplates(items => [...items, item])

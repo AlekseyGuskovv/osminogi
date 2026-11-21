@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { postJson } from '../api'
 import type { Finding } from './types'
+import { ConditionRules } from '../editor/ConditionRules'
 
 type Severity = Finding['severity']
-type Preview = { nodeId: string; value: string | number; branch: 'yes' | 'no'; wouldNotify: boolean }
+type Preview = { branch: 'yes' | 'no'; wouldNotify: boolean }
 
 export function ThresholdPreview({ runId, nodeId, settings }: {
   runId: string; nodeId: string; settings?: Record<string, unknown>
@@ -11,6 +12,8 @@ export function ThresholdPreview({ runId, nodeId, settings }: {
   const metric = settings?.metric
   const count = metric === 'findingCount'
   const regex = metric === 'findingTitle'
+  const compound = Array.isArray(settings?.rules)
+  const [group, setGroup] = useState(() => settings ?? {})
   const [value, setValue] = useState<string | number>(
     count ? Number(settings?.value ?? 1) : String(settings?.value ?? (regex ? '' : 'critical')),
   )
@@ -24,7 +27,7 @@ export function ThresholdPreview({ runId, nodeId, settings }: {
     setError('')
     setPreview(undefined)
     try {
-      setPreview(await postJson<Preview>(`/runs/${encodeURIComponent(runId)}/threshold-preview`, { nodeId, value }))
+      setPreview(await postJson<Preview>(`/runs/${encodeURIComponent(runId)}/threshold-preview`, { nodeId, value: compound ? group : value }))
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Предпросмотр не удался.')
     } finally {
@@ -41,7 +44,11 @@ export function ThresholdPreview({ runId, nodeId, settings }: {
   return <section className="garden-preview" aria-label="Предпросмотр порога">
     <h2>Предпросмотр порога</h2>
     <form onSubmit={event => { event.preventDefault(); void check() }}>
-      {count ? <label>Минимум находок<input required type="number" min="0" max="5000" step="1"
+      {compound ? <ConditionRules settings={group} disabled={pending} onChange={next => {
+        setGroup(next)
+        setPreview(undefined)
+        setError('')
+      }} /> : count ? <label>Минимум находок<input required type="number" min="0" max="5000" step="1"
         value={Number.isFinite(value) ? value : ''} disabled={pending} onChange={event => change(event.currentTarget.valueAsNumber)} /></label>
         : regex ? <label>Шаблон названия<input required value={value} disabled={pending} onChange={event => change(event.target.value)} /></label>
         : <label>Критичность<select value={value} disabled={pending} onChange={event => change(event.target.value as Severity)}>

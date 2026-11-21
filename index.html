@@ -217,7 +217,9 @@ function drawInspector() {
     + (metric==='severity'?'<label>Порог<select id="threshold"'+locked+'>'+['Низкая',...levels].map((level,i)=>[level,i-1]).map(([level,index])=>'<option value="'+index+'"'+(index===(node.threshold??2)?' selected':'')+'>'+level+'</option>').join('')+'</select></label>'
     : '<label>'+(metric==='count'?'Количество':'Регулярное выражение')+'<input id="threshold" '+(metric==='count'?'type="number" min="0" max="5000"':'maxlength="80"')+' value="'+encode(node.threshold)+'"'+locked+'></label>');
   $('inspector').innerHTML = '<h2>'+encode(nodeName(node))+'</h2><p>'+encode(nodeDescription(node))+'</p>'
-    + (node.type==='gate'?gateSettings:'')
+    + (node.type==='gate'?(node.ruleSettings
+      ? '<p>Составное условие · '+node.ruleSettings.rules.length+' правил. Редактируется в React-конструкторе.</p>'
+      : gateSettings):'')
     + (node.type==='telegram'?channelSettings:'')
     + (node.type==='start'?'<label>Ежедневный запуск, UTC<input id="schedule" type="time" value="'+encode(node.schedule||'')+'"'+locked+'></label><small>Нажмите «Сохранить сценарий», чтобы активировать расписание на сервере.</small><div class="row"><button id="simulate"'+locked+'>Запустить вручную</button>'+(node.schedule?'<button id="clearSchedule"'+locked+'>Выключить</button>':'')+'</div>':'')
     + '<section><h3>Куда передать результат</h3>'
@@ -249,6 +251,7 @@ function fromWordNode({type,settings}) {
   const kind = wordKinds[type] || type;
   if (kind==='telegram' && 'channelId' in settings) return {type:kind,channelId:settings.channelId};
   if (kind!=='gate') return {type:kind};
+  if (Array.isArray(settings.rules)) return {type:kind,ruleSettings:settings};
   const metric = {maxSeverity:'severity',findingCount:'count',findingTitle:'title'}[settings.metric];
   const threshold = metric==='severity'?(settings.value==='low'?-1:severities[settings.value]):settings.value;
   return {type:kind,metric,threshold};
@@ -295,7 +298,8 @@ $('nodeDraftForm').onsubmit = async event => {
     $('nodeTemplateDescription').value = nodeDraft.description;
     const labels = {severity:'Критичность',count:'Минимум находок',title:'Выражение для названия'};
     const value = node.metric==='severity'?(node.threshold===-1?'Низкая':levels[node.threshold]):node.threshold;
-    $('nodeTemplateSettings').textContent = types[node.type][1]+(node.metric?' · '+labels[node.metric]+' · '+value:'');
+    $('nodeTemplateSettings').textContent = types[node.type][1]+(node.ruleSettings?' · '+node.ruleSettings.rules.length+' правил':
+      node.metric?' · '+labels[node.metric]+' · '+value:'');
     $('nodePreview').hidden = false;
     $('nodeCatalogStatus').textContent = '';
   } catch (error) {
