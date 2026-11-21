@@ -249,3 +249,15 @@
   .garden-run-columns, .garden-run-list li { grid-template-columns: minmax(55px,1fr) minmax(40px,.65fr) minmax(70px,1fr) minmax(70px,1fr) minmax(34px,.5fr); }
   .garden-workspace[data-inspector-collapsed='true'] { grid-template-columns: minmax(0,1fr); }
 }
+.garden-workspace { --inspector-width: 218px; grid-template-columns: 166px minmax(0, 1fr) var(--inspector-width); }
+@media (max-width: 1350px) {
+  .garden-workspace { --inspector-width: 194px; grid-template-columns: 145px minmax(0, 1fr) var(--inspector-width); }
+}
+@media (max-width: 1120px) {
+  .garden-workspace { --inspector-width: 245px; grid-template-columns: 145px minmax(0, 1fr); }
+  .garden-settings { width: min(var(--inspector-width), 80%); }
+}
+@media (max-width: 660px) {
+  .garden-workspace, .garden-workspace[data-inspector-collapsed='true'] { grid-template-columns: minmax(0, 1fr); }
+  .garden-settings { position: static; width: auto; max-height: none; }
+}

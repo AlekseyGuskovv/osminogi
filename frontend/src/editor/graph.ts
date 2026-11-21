@@ -3,6 +3,7 @@ import type { NodeType, WorkflowDraft } from '../workflow.ts'
 export type Point = { x: number; y: number }
 
 export function addNode<Draft extends WorkflowDraft>(draft: Draft, type: NodeType, position: Point): Draft {
+  if (type === 'start' && draft.nodes.some(node => node.type === 'start')) return draft
   let suffix = 1
   const usedIds = new Set(draft.nodes.map(node => node.id))
   while (usedIds.has(`${type}-${suffix}`)) suffix++

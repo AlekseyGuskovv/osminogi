@@ -1,5 +1,6 @@
 import { Background, BaseEdge, Controls, Handle, MarkerType, Position, ReactFlow, getSmoothStepPath, useNodesState } from '@xyflow/react'
 import type { Connection, Edge, EdgeProps, Node, NodeChangeset, NodeProps, ReactFlowInstance, Viewport } from '@xyflow/react'
+import type { DragEvent } from 'react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getJson } from '../api'
 import type { SnapshotRef } from '../api'
@@ -7,6 +8,7 @@ import { getHighlight } from '../runs/ci'
 import type { Run } from '../runs/types'
 import { runsUrl } from '../runs/navigation'
 import { useRunStatus, useStartRun } from '../runs/useRun'
+import { nodeTypes } from '../workflow'
 import type { NodeType, Workflow } from '../workflow'
 import { newWorkflow, saveDraft } from './useWorkflow'
 import type { EditableWorkflow } from './useWorkflow'
@@ -18,6 +20,10 @@ import '@xyflow/react/dist/style.css'
 import { Icon } from '../ui/Icon'
 import { WorkspaceNav } from '../ui/WorkspaceNav'
 import { orderGraph } from './layout'
+import { newNodeSize, placeNode } from './placement'
+import type { Point } from './graph'
+
+const paletteMime = 'application/x-cyber-garden-node'
 
 const labels = {
   start: ['Запуск', 'Начало сценария', 'terminal'],
@@ -153,6 +159,7 @@ const FlowCanvas = memo(function FlowCanvas({
 export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorProps) {
   const [workflow, setWorkflow] = useState<EditableWorkflow>()
   const canvas = useRef<HTMLElement>(null)
+  const inspector = useRef<HTMLElement>(null)
   const draftRef = useRef<EditableWorkflow | undefined>(undefined)
   const flow = useRef<ReactFlowInstance<Block>>(null)
   const cameraTouched = useRef(false)
@@ -175,6 +182,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorPr
   const runStatus = runView?.status ?? accepted?.status
   const [notice, setNotice] = useState<{ text: string; error?: boolean }>()
   const dirty = workflow && (!workflow.id || JSON.stringify({ ...workflow, snapshotId: snapshotId || undefined }) !== JSON.stringify(savedWorkflow))
+  const hasStart = workflow?.nodes.some(node => node.type === 'start')
   const activeNode = workflow?.nodes.find(node => node.id === selectedId)
   const activeNodeView = runView?.nodes[selectedId]
   const missingChannel = workflow?.nodes.find(node => node.type === 'telegram' && !node.settings.channelId)
@@ -266,13 +274,69 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorPr
     })
   }, [])
 
-  function addBlock(type: NodeType) {
-    if (!workflow) return
-    const next = addNode(workflow, type, { x: 90 + (workflow.nodes.length % 4) * 195, y: 370 })
+  function addBlock(type: NodeType, drop?: Point) {
+    const instance = flow.current
+    const surface = canvas.current?.querySelector('.react-flow')
+    if (!workflow || !instance || !surface || pending) return
+
+    const rect = surface.getBoundingClientRect()
+    const workspace = canvas.current?.parentElement
+    const panel = inspector.current
+    let right = Math.min(rect.right, window.innerWidth)
+    if (panel && workspace) {
+      const panelStyle = getComputedStyle(panel)
+      const workspaceStyle = getComputedStyle(workspace)
+      const panelWidth = Number.parseFloat(workspaceStyle.getPropertyValue('--inspector-width'))
+      if (panelStyle.position === 'absolute') {
+        right = Math.min(right, workspace.getBoundingClientRect().right - Math.min(panelWidth, workspace.clientWidth * .8) - 6)
+      } else if (inspectorCollapsed && workspaceStyle.gridTemplateColumns.split(' ').length > 1) {
+        right -= panelWidth + Number.parseFloat(workspaceStyle.columnGap)
+      }
+    }
+    const left = Math.max(rect.left, 0)
+    const top = Math.max(rect.top, 0)
+    const bottom = Math.min(rect.bottom, window.innerHeight)
+    if (right <= left || bottom <= top) return
+    if (drop && (drop.x < rect.left || drop.x > rect.right || drop.y < rect.top || drop.y > rect.bottom)) return
+
+    const fromScreen = (point: Point) => instance.screenToFlowPosition(point, { snapToGrid: false })
+    const start = fromScreen({ x: left, y: top })
+    const end = fromScreen({ x: right, y: bottom })
+    const anchor = fromScreen(drop ?? { x: (left + right) / 2, y: (top + bottom) / 2 })
+    const measured = new Map(instance.getNodes().map(node => [node.id, node.measured]))
+    const position = placeNode(
+      { ...start, width: end.x - start.x, height: end.y - start.y },
+      workflow.nodes.map(node => ({
+        x: node.x, y: node.y,
+        width: measured.get(node.id)?.width ?? newNodeSize.width,
+        height: measured.get(node.id)?.height ?? newNodeSize.height,
+      })),
+      anchor,
+      newNodeSize,
+      !drop,
+    )
+
+    const next = addNode(workflow, type, position)
+    if (next === workflow) return
+    cameraTouched.current = true
     setWorkflow(next)
     setSelectedId(next.nodes[next.nodes.length - 1].id)
+    setSelectedEdge('')
     setInspectorCollapsed(false)
     setInspectorOpen(true)
+  }
+
+  function allowPaletteDrop(event: DragEvent<HTMLElement>) {
+    if (pending || !event.dataTransfer.types.includes(paletteMime)) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'copy'
+  }
+
+  function dropBlock(event: DragEvent<HTMLElement>) {
+    const type = nodeTypes.find(value => value === event.dataTransfer.getData(paletteMime))
+    if (!type) return
+    event.preventDefault()
+    addBlock(type, { x: event.clientX, y: event.clientY })
   }
 
   const linkBlocks = useCallback(({ source, target, sourceHandle }: Connection) => {
@@ -406,12 +470,21 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorPr
         <aside className="garden-panel garden-palette" aria-label="Палитра">
           <h2>Палитра блоков</h2>
           {palette.map(group => <section key={group.title}><h3>{group.title}</h3>
-            {group.types.map(type => <button key={type} data-block-type={type} data-node-tone={labels[type][2]} disabled={pending} onClick={() => addBlock(type)}>
-              <span className="garden-icon"><Icon name={type} size={16} /></span>{labels[type][0]}
-            </button>)}
+            {group.types.map(type => {
+              const disabled = pending || (type === 'start' && hasStart)
+              return <button key={type} data-block-type={type} data-node-tone={labels[type][2]} disabled={disabled}
+                title={type === 'start' && hasStart ? 'В сценарии уже есть блок «Запуск»' : undefined}
+                draggable={!disabled} onDragStart={event => {
+                  if (disabled) { event.preventDefault(); return }
+                  event.dataTransfer.effectAllowed = 'copy'
+                  event.dataTransfer.setData(paletteMime, type)
+                }} onClick={() => addBlock(type)}>
+                <span className="garden-icon"><Icon name={type} size={16} /></span>{labels[type][0]}
+              </button>
+            })}
           </section>)}
         </aside>
-        <section ref={canvas} className="garden-canvas" aria-label="Граф сценария">
+        <section ref={canvas} className="garden-canvas" aria-label="Граф сценария" onDragOver={allowPaletteDrop} onDrop={dropBlock}>
           <div className="garden-canvas-header"><div><Icon name="graph" size={16} /><strong>Граф сценария</strong></div>
             <button className="garden-inspector-toggle" onClick={() => { setInspectorCollapsed(false); setInspectorOpen(open => !open) }} aria-expanded={inspectorOpen} aria-controls="workflow-inspector"><Icon name="panel" size={16} />Настройки</button>
           </div>
@@ -420,7 +493,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorPr
             onPickEdge={pickEdge} onClearSelection={clearSelection} />
           <button className="garden-layout" type="button" disabled={pending} onClick={order}><Icon name="layout" size={15} />Упорядочить</button>
         </section>
-        <aside className="garden-panel garden-settings" id="workflow-inspector" data-open={inspectorOpen} aria-label="Настройки блока">
+        <aside ref={inspector} className="garden-panel garden-settings" id="workflow-inspector" data-open={inspectorOpen} aria-label="Настройки блока">
           <div className="garden-inspector-title"><h2>Настройки</h2><button className="garden-inspector-close" onClick={() => { setInspectorOpen(false); setInspectorCollapsed(true) }} aria-label="Закрыть настройки">×</button></div>
           {activeNode ? <>
             <div className="garden-inspector-node" data-node-tone={labels[activeNode.type][2]}>
