@@ -499,7 +499,7 @@ try {
     const threshold = await waitFor(() => document.querySelector('[aria-label="Настройки блока"] select:has(option[value="critical"])'))
     threshold.value = 'high'
     threshold.dispatchEvent(new Event('change', { bubbles: true }))
-    const snapshot = document.querySelector('.garden-actions > label select')
+    const snapshot = document.querySelector('.garden-snapshot-select')
     snapshot.value = 'pr-2'
     snapshot.dispatchEvent(new Event('change', { bubbles: true }))
     await new Promise(resolve => requestAnimationFrame(resolve))
@@ -543,6 +543,43 @@ try {
       catch (error) { if (!(error instanceof ApiError) || error.status !== statusCode || error.code !== code) throw error }
     }
     return 'Snapshot import: browser-generated multipart boundary and statuses 201, 413, 422 passed'
+  })
+
+  await evaluate(4175, async () => {
+    async function waitFor(predicate) {
+      for (let i = 0; i < 100; i++) {
+        const value = predicate()
+        if (value) return value
+        await new Promise(resolve => setTimeout(resolve, 50))
+      }
+      throw new Error('Snapshot picker did not reach expected state')
+    }
+    const picker = await waitFor(() => document.querySelector('.garden-snapshot-picker'))
+    const select = picker.querySelector('select')
+    const input = picker.querySelector('input[type="file"]')
+    if (select.value !== 'pr-1') throw new Error('Expected the original workflow snapshot')
+    function upload(file) {
+      const transfer = new DataTransfer()
+      transfer.items.add(file)
+      input.files = transfer.files
+      input.dispatchEvent(new Event('change', { bubbles: true }))
+    }
+    upload(new File(['invalid'], 'bad.zip'))
+    await waitFor(() => picker.querySelector('[role="alert"]'))
+    if (select.value !== 'pr-1') throw new Error('Rejected upload changed the selection')
+    const bytes = Uint8Array.from(atob('UEsDBBQAAAAIALWwdF1L9CGBHQAAABsAAAAKAAAAUkVBRE1FLnR4dHOuTEotUnBPLEpJzVMoSS0uUSjOSywozsgv4QIAUEsBAhQDFAAAAAgAtbB0XUv0IYEdAAAAGwAAAAoAAAAAAAAAAAAAAIABAAAAAFJFQURNRS50eHRQSwUGAAAAAAEAAQA4AAAARQAAAAAA'), char => char.charCodeAt(0))
+    const file = new File([bytes], 'picked.zip', { type: 'application/zip' })
+    upload(file)
+    await waitFor(() => select.selectedOptions[0]?.textContent === 'picked')
+    const selected = select.value
+    const button = [...document.querySelectorAll('.garden-actions button')].find(item => item.textContent.includes('Запустить'))
+    button.click()
+    await waitFor(() => document.querySelector('[data-run-status="succeeded"]'))
+    const { getJson } = await import('/src/api.ts')
+    const runId = document.querySelector('.garden-run-accepted a').textContent
+    const run = await getJson('/runs/' + runId)
+    if (run.snapshotId !== selected || !run.report.summary) throw new Error('Imported snapshot was not used in final report')
+    return 'Snapshot picker: rejected upload retained selection; valid ZIP selected and used in a completed run'
   })
 
   await evaluate(4176, async () => {

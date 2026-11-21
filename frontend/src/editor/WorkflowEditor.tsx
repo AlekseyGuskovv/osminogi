@@ -2,6 +2,7 @@ import { Background, Controls, Handle, MarkerType, Position, ReactFlow } from '@
 import type { Connection, Node, NodeChangeset, NodeProps } from '@xyflow/react'
 import { useEffect, useState } from 'react'
 import { getJson } from '../api'
+import type { SnapshotRef } from '../api'
 import { getHighlight } from '../runs/ci'
 import type { Run } from '../runs/types'
 import { runsUrl } from '../runs/navigation'
@@ -10,6 +11,7 @@ import { nodeTypes } from '../workflow'
 import type { NodeType, Workflow } from '../workflow'
 import { newWorkflow, saveDraft } from './useWorkflow'
 import type { EditableWorkflow } from './useWorkflow'
+import { SnapshotPicker } from './SnapshotPicker'
 import { DraftDialog } from './DraftDialog'
 import { NodeSettings } from './NodeSettings'
 import { addNode, connect, removeNode } from './graph'
@@ -29,7 +31,6 @@ const labels: Record<NodeType, [string, string]> = {
 
 const statuses = { queued: 'В очереди', running: 'Выполняется', succeeded: 'Готово', failed: 'Ошибка', skipped: 'Пропущен' }
 type Block = Node<{ kind: NodeType; status?: keyof typeof statuses; highlighted?: boolean }, 'workflow'>
-type Snapshot = { id: string; label: string }
 export type EditorProps = { workflowId?: string; ciRunId?: string }
 
 function WorkflowBlock({ data, selected }: NodeProps<Block>) {
@@ -53,7 +54,7 @@ const flowNodeTypes = { workflow: WorkflowBlock }
 export function WorkflowEditor({ workflowId, ciRunId }: EditorProps) {
   const [workflow, setWorkflow] = useState<EditableWorkflow>()
   const [ciRun, setCiRun] = useState<Run>()
-  const [snapshots, setSnapshots] = useState<Snapshot[]>([])
+  const [snapshots, setSnapshots] = useState<SnapshotRef[]>([])
   const [snapshotId, setSnapshotId] = useState('')
   const [selectedId, setSelectedId] = useState('')
   const [loading, setLoading] = useState(true)
@@ -85,7 +86,7 @@ export function WorkflowEditor({ workflowId, ciRunId }: EditorProps) {
     let active = true
     void Promise.all([
       workflowId ? getJson<Workflow>(`/workflows/${encodeURIComponent(workflowId)}`) : Promise.resolve(newWorkflow()),
-      getJson<Snapshot[]>('/snapshots'),
+      getJson<SnapshotRef[]>('/snapshots'),
     ]).then(([loaded, choices]) => {
       if (!active) return
       setWorkflow(loaded)
@@ -185,10 +186,8 @@ export function WorkflowEditor({ workflowId, ciRunId }: EditorProps) {
             url.search = new URLSearchParams({ workflow: 'new' }).toString()
             window.history.replaceState(null, '', url)
           }} />
-          <label>Снимок<select value={snapshotId} disabled={pending} onChange={event => setSnapshotId(event.target.value)}>
-            <option value="">Выберите снимок</option>
-            {snapshots.map(snapshot => <option key={snapshot.id} value={snapshot.id}>{snapshot.label}</option>)}
-          </select></label>
+          <SnapshotPicker snapshots={snapshots} value={snapshotId} disabled={pending} onSelect={setSnapshotId}
+            onImport={snapshot => setSnapshots(current => [...current.filter(item => item.id !== snapshot.id), snapshot])} />
           <button disabled={pending} onClick={() => void submit('save')}>Сохранить</button>
           <button className="garden-primary" disabled={pending || !workflow.id || !snapshotId} onClick={() => void submit('run')}>▷ Запустить</button>
         </div>}

@@ -105,3 +105,6 @@
 .garden-draft-form, .garden-draft-form label { display: grid; gap: 10px; }
 .garden-draft-form button { justify-self: start; }
 .garden-draft-form textarea { width: 100%; border: 1px solid #35463d; border-radius: 8px; padding: 9px; background: #101613; color: #edf4ef; font: inherit; }
+.garden-snapshot-picker { display: flex; align-items: end; flex-wrap: wrap; gap: 8px; position: relative; }
+.garden-snapshot-picker small { flex-basis: 100%; font-size: 12px; color: #a9e9c6; }
+.garden-snapshot-picker [role='alert'] { color: #ffb3a5; }

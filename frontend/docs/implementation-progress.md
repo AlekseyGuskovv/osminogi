@@ -22,6 +22,7 @@
 | 18 | Finding History | `feat/18-finding-history` | `85aecc7` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Состояния found, resolved, returned со ссылками. |
 | 19 | Templates | `feat/19-templates-page` | `5de215d` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Каталог, публикация и копия без частных настроек. |
 | 20 | AI Workflow Draft | `feat/20-ai-draft` | `b86cd2d` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Текст, редактируемый граф и отдельное сохранение. |
-| 21 | Snapshot Import API | `feat/21-snapshot-import-api` | HEAD ветки | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Готово к публикации | Multipart, 201/413/422, снимки доступны в GET. |
+| 21 | Snapshot Import API | `feat/21-snapshot-import-api` | `0599d14` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Multipart, 201/413/422, снимки доступны в GET. |
+| 22 | Snapshot Picker | `feat/22-snapshot-picker` | HEAD ветки | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Готово к публикации | Импорт ZIP, новый выбор и сохранение прежнего значения при ошибке. |
 
-Следующая задача — Task 22, выбор и загрузка снимка.
+Следующая задача — Task 23, подключения Telegram.
