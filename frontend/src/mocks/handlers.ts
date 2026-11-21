@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import type { Template } from '../templates/types'
 import { nodeTypes } from '../workflow'
-import type { Branch, ConnectionRef, Workflow, WorkflowDraft } from '../workflow'
+import type { Branch, ConnectionRef, Workflow, WorkflowDraft, WorkflowDraftResult } from '../workflow'
 import { inspectZip } from './zip'
 import { runEvents } from './events'
 import { compareFindings, initialWorkflow, makeRun, snapshots } from './fixtures'
@@ -322,8 +322,19 @@ export const handlers = [
     if (typeof body?.prompt !== 'string' || !body.prompt.trim()) {
       return error(422, 'INVALID_REQUEST', 'Опишите, что должен проверить сценарий.')
     }
+    const prompt = body.prompt.toLowerCase()
+    const time = /\b(?:[01]\d|2[0-3]):[0-5]\d\b/.exec(prompt)?.[0]
+    const scheduled = time || /расписан|каждый день|ежеднев|daily|schedule/.test(prompt)
+    const wantsEmail = /\be-?mail\b|почт/.test(prompt)
     const { nodes, edges } = forTemplate(initialWorkflow)
-    return HttpResponse.json({ name: 'Черновик проверки проекта', schedule: null, nodes, edges, warnings: [] })
+    const draft: WorkflowDraftResult = {
+      name: 'Черновик проверки проекта',
+      schedule: scheduled ? { time: time ?? '09:00', timezone: 'Europe/Moscow' } : null,
+      nodes,
+      edges,
+      warnings: wantsEmail ? ['Доступен Telegram. Выберите канал, если хотите получать уведомления.'] : [],
+    }
+    return HttpResponse.json(draft)
   }),
   http.post(api('/workflows'), async ({ request }) => {
     const body = await readBody(request)

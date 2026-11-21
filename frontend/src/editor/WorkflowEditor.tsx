@@ -55,12 +55,13 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorPr
   const [workflow, setWorkflow] = useState<EditableWorkflow>()
   const [ciRun, setCiRun] = useState<Run>()
   const [snapshots, setSnapshots] = useState<SnapshotRef[]>([])
+  const [draftWarnings, setDraftWarnings] = useState<string[]>([])
   const [snapshotId, setSnapshotId] = useState('')
   const [selectedId, setSelectedId] = useState('')
   const [loading, setLoading] = useState(true)
   const [loadAttempt, setLoadAttempt] = useState(0)
   const [saving, setSaving] = useState(false)
-  const { start, starting, accepted } = useStartRun()
+  const { start, starting, accepted, clearAccepted } = useStartRun()
   const pending = saving || starting
   const runView = useRunStatus(accepted?.id)
   const runStatus = runView?.status ?? accepted?.status
@@ -177,8 +178,10 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorPr
         </div>
         {workflow && <div className="garden-actions">
           <a href="?workflow=new">Новый сценарий</a>
-          <DraftDialog onOpenDraft={draft => {
+          <DraftDialog disabled={pending} onOpenDraft={({ warnings, ...draft }) => {
             setWorkflow(draft)
+            setDraftWarnings(warnings ?? [])
+            clearAccepted()
             setSnapshotId(draft.snapshotId ?? '')
             setSelectedId('')
             setCiRun(undefined)
@@ -193,6 +196,10 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorPr
           <button className="garden-primary" disabled={pending || !workflow.id || !snapshotId} onClick={() => void submit('run')}>▷ Запустить</button>
         </div>}
       </section>
+      {draftWarnings.length > 0 && <section className="garden-notice garden-draft-notice" aria-label="Предупреждения черновика">
+        <ul>{draftWarnings.map(warning => <li key={warning}>{warning}</li>)}</ul>
+        {missingChannel && <button type="button" onClick={() => setSelectedId(missingChannel.id)}>Настроить Telegram</button>}
+      </section>}
       {copiedTemplate && workflow && <section className="garden-notice garden-copy-setup" aria-label="Настройка копии">
         <strong>Настройте свою копию</strong>
         {!snapshotId && <span>Выберите снимок проекта.</span>}

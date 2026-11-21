@@ -26,6 +26,5 @@
 | 22 | Snapshot Picker | `feat/22-snapshot-picker` | `7c44352` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Импорт ZIP, новый выбор и сохранение прежнего значения при ошибке. |
 | 23 | Telegram Connections | `feat/23-telegram-connections` | `f8727b2` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Метаданные подключений, поле пароля и channelId в графе. |
 | 24 | Template Copy | `feat/24-template-copy` | `7277f8a` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Явный выбор своего снимка и канала для копии. |
-| 25 | CI Reason | `feat/25-ci-reason` | HEAD ветки | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Готово к публикации | Красный CI объяснён и для находки из категории «Уже было». |
-
-Следующая задача — Task 26, предупреждения AI-черновика.
+| 25 | CI Reason | `feat/25-ci-reason` | `b21d006` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Красный CI объяснён и для находки из категории «Уже было». |
+| 26 | Draft Warnings | `feat/26-draft-warnings` | HEAD ветки | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Приёмка завершена | Предупреждения и явный выбор Telegram; полная сквозная проверка с MSW. |

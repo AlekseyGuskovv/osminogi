@@ -116,3 +116,6 @@
 .garden-ci-reason { margin-bottom: 13px; border-radius: 9px; padding: 12px; background: #1b2b22; }
 .garden-ci-reason[data-ci-reason='CRITICAL_FOUND'] { background: #3d2825; color: #ffd5cc; }
 .garden-ci-reason p { margin: 6px 0; }
+.garden-draft-warnings { padding: 10px 10px 10px 28px; border-left: 3px solid #e9c984; color: #ffe2a2; background: #332b1f; border-radius: 6px; }
+.garden-draft-notice { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.garden-draft-notice ul { margin: 0; padding-left: 20px; }

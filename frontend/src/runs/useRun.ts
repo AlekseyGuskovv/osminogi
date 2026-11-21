@@ -35,7 +35,7 @@ export function useStartRun() {
     }
   }
 
-  return { start, starting, accepted }
+  return { start, starting, accepted, clearAccepted: () => setAccepted(undefined) }
 }
 
 

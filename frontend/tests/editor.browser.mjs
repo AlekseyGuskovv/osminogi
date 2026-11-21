@@ -708,6 +708,67 @@ try {
     throw new Error('Expected incompatible runs error')
   }, '/?view=runs&workflow=wf-1&run=run-existing')
 
+  await evaluate(4175, async () => {
+    async function waitFor(predicate) {
+      for (let i = 0; i < 100; i++) {
+        const value = predicate()
+        if (value) return value
+        await new Promise(resolve => setTimeout(resolve, 50))
+      }
+      throw new Error('Draft warning flow did not reach expected state')
+    }
+    const button = text => [...document.querySelectorAll('button')].find(item => item.textContent === text)
+    const { getJson } = await import('/src/api.ts')
+    const before = (await getJson('/workflows')).length
+    const open = await waitFor(() => button('AI-черновик'))
+    open.click()
+    const prompt = document.querySelector('dialog textarea')
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(prompt, 'Проверяй проект каждый день в 08:30 и отправляй отчёт на email')
+    prompt.dispatchEvent(new Event('input', { bubbles: true }))
+    await waitFor(() => !button('Сгенерировать черновик')?.disabled)
+    document.querySelector('.garden-draft-form').requestSubmit()
+    await waitFor(() => document.querySelector('dialog .garden-draft-warnings')?.textContent.includes('Доступен Telegram'))
+    button('Открыть в редакторе').click()
+    const warnings = await waitFor(() => document.querySelector('.garden-draft-notice'))
+    if (!warnings.textContent.includes('Выберите канал')) throw new Error('Draft warning lost in the editor')
+    warnings.querySelector('button').click()
+    const telegram = await waitFor(() => document.querySelector('.garden-connection-select'))
+    if (telegram.value !== '') throw new Error('Telegram channel was automatically selected')
+    document.querySelector('[data-id="start"] .garden-node').click()
+    const schedule = await waitFor(() => document.querySelector('[aria-label="Настройки блока"] input[type="time"]'))
+    if (schedule.value !== '08:30' || (await getJson('/workflows')).length !== before) {
+      throw new Error('Requested schedule not shown or draft saved unexpectedly')
+    }
+    return 'Draft warnings: email fallback remains explicit; editable schedule uses requested 08:30'
+  })
+
+  await evaluate(4175, async () => {
+    async function waitFor(predicate) {
+      for (let i = 0; i < 100; i++) {
+        const value = predicate()
+        if (value) return value
+        await new Promise(resolve => setTimeout(resolve, 50))
+      }
+      throw new Error('Full fix acceptance did not reach expected state')
+    }
+    const select = await waitFor(() => document.querySelector('.garden-comparison select option[value="run-1"]')?.parentElement)
+    select.value = 'run-1'
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    const resolved = await waitFor(() => document.querySelector('[data-comparison-group="resolved"] [data-finding-id="F-key"]'))
+    if (!document.querySelector('[data-detail-ci="passed"]') || resolved.querySelector('pre')?.textContent !== 'api-key: ••••') {
+      throw new Error('Re-run must be green and resolved proof must stay masked')
+    }
+    const stream = await fetch('/api/v1/runs/run-1/events', { headers: { 'Last-Event-ID': '2' } })
+    const events = await stream.text()
+    const { getJson } = await import('/src/api.ts')
+    const body = JSON.stringify(await getJson('/runs/run-1'))
+    if (events.includes('DEMO-CONNECTION-TOKEN') || events.includes('api-key:') || body.includes('DEMO-CONNECTION-TOKEN') ||
+      !events.startsWith('id: 3') || !body.includes('api-key: ••••')) {
+      throw new Error('SSE resume or masking invariant failed')
+    }
+    return 'Full fix acceptance: red CI → masked finding → fix → pr-2 → green CI → resolved F-key; resumed SSE and redaction checked'
+  }, '/?view=runs&workflow=wf-1&run=run-6')
+
   await evaluate(4176, async () => {
     const { installMocks } = await import('/src/mocks/worker.ts')
     await installMocks()

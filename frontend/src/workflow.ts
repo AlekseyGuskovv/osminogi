@@ -11,3 +11,5 @@ export type WorkflowDraft = {
 export type Workflow = WorkflowDraft & { id: string; revision: number }
 
 export type ConnectionRef = { id: string; type: 'telegram'; name: string; configured: boolean }
+
+export type WorkflowDraftResult = WorkflowDraft & { warnings: string[] }
