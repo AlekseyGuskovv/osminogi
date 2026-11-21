@@ -277,6 +277,7 @@ try {
       card.querySelector('pre')?.textContent !== 'api-key: ••••' ||
       !card.querySelector('[data-severity="critical"]') ||
       !card.querySelector('[data-recommendation-source="ai"]')) throw new Error('Incomplete finding card')
+    if (!document.querySelector('a[href="?workflow=wf-1&ciRun=run-1"]')) throw new Error('Missing graph link from red CI')
     const { postJson } = await import('/src/api.ts')
     const aiError = await postJson('/workflows/wf-1/runs?scenario=aiError', { trigger: 'manual', snapshotId: 'pr-1' })
     if (aiError.id !== 'run-5') throw new Error('Expected next run ID and persisted history')
@@ -317,6 +318,21 @@ try {
     }
     return 'Comparison: PR baseline and run-2 against run-1 display the correct categories'
   }, '/?view=runs&workflow=wf-1&run=run-2')
+
+  await evaluate(4175, async () => {
+    for (let i = 0; i < 80 && !document.querySelector('.garden-ci-edge'); i++) {
+      await new Promise(resolve => setTimeout(resolve, 50))
+    }
+    const nodes = [...document.querySelectorAll('[data-ci-highlight]')].map(node => node.closest('.react-flow__node').dataset.id).sort()
+    if (nodes.join(',') !== 'gate,secret') throw new Error('Analyzer and gate must be highlighted')
+    if (document.querySelector('.garden-ci-edge')?.getAttribute('data-testid') !== 'rf__edge-gate:yes') {
+      throw new Error('Only yes branch must be highlighted')
+    }
+    if (!document.querySelector('[aria-label="Настройки блока"]')?.textContent.includes('Поиск секретов')) {
+      throw new Error('Analyzer was not selected')
+    }
+    return 'Red CI: analyzer, condition and yes branch highlighted in the editor'
+  }, '/?workflow=wf-1&ciRun=run-1')
 
   await evaluate(4176, async () => {
     const { installMocks } = await import('/src/mocks/worker.ts')

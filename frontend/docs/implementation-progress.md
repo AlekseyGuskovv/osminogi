@@ -15,6 +15,7 @@
 | 11 | SSE Subscription | `feat/11-run-events` | `ccaf837` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | EventSource, дедупликация, финальный GET и закрытие потока. |
 | 12 | Apply Run Events | `feat/12-apply-run-events` | `6160861` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Состояния блоков, вход и выход из SSE. |
 | 13 | Finding Card | `feat/13-finding-card` | `bd0b328` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | История запусков, находки и источники рекомендаций. |
-| 14 | Comparison Page | `feat/14-comparison-page` | HEAD ветки | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Готово к публикации | Сравнение с базой PR или прошлым запуском и три категории находок. |
+| 14 | Comparison Page | `feat/14-comparison-page` | `5fb759c` | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Опубликовано | Сравнение с базой PR или прошлым запуском и три категории находок. |
+| 15 | CI Highlight | `feat/15-ci-highlight` | HEAD ветки | Сборка, линтер, строгий TypeScript, unit-тесты, Chrome | Готово к публикации | Подсветка анализатора, условия и выбранной ветки. |
 
-Следующая задача — Task 15, подсветка CI.
+Следующая задача — Task 16, предпросмотр порога.

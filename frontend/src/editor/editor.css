@@ -79,3 +79,5 @@
 .garden-comparison-grid h3 span { color: #a8b9ae; }
 .garden-comparison-grid article + article { margin-top: 8px; }
 @media (max-width: 780px) { .garden-comparison-grid { grid-template-columns: 1fr; } }
+.garden-node[data-ci-highlight] { border-color: #ffad9e; box-shadow: 0 0 0 2px #ffad9e40; }
+.garden-notice a { color: inherit; }

@@ -4,6 +4,7 @@ import { ComparisonPage } from './ComparisonPage'
 import { FindingCard } from './FindingCard'
 import type { Run } from './types'
 
+import { getHighlight } from './ci'
 import { runsUrl } from './navigation'
 
 export function RunsPage({ workflowId, runId }: { workflowId: string; runId?: string }) {
@@ -43,6 +44,10 @@ export function RunsPage({ workflowId, runId }: { workflowId: string; runId?: st
       {run && <>
         <p>{run.report.summary}</p>
         <p className="garden-meta">Снимок {run.snapshotId} · CI {run.ci.status}</p>
+        {getHighlight(run.ci).nodeIds.length > 0 && <a
+          href={`?${new URLSearchParams({ workflow: run.workflowId, ciRun: run.id })}`}>
+          Показать решение CI на графе
+        </a>}
         <h2>Находки</h2>
         {run.findings.length === 0 && <p>Находок нет.</p>}
         <div className="garden-findings">

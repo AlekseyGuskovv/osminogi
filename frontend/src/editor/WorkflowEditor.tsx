@@ -2,6 +2,8 @@ import { Background, Controls, Handle, MarkerType, Position, ReactFlow } from '@
 import type { Connection, Node, NodeChangeset, NodeProps } from '@xyflow/react'
 import { useEffect, useState } from 'react'
 import { getJson } from '../api'
+import { getHighlight } from '../runs/ci'
+import type { Run } from '../runs/types'
 import { runsUrl } from '../runs/navigation'
 import { useRunStatus, useStartRun } from '../runs/useRun'
 import { nodeTypes } from '../workflow'
@@ -25,15 +27,15 @@ const labels: Record<NodeType, [string, string]> = {
 }
 
 const statuses = { queued: 'В очереди', running: 'Выполняется', succeeded: 'Готово', failed: 'Ошибка', skipped: 'Пропущен' }
-type Block = Node<{ kind: NodeType; status?: keyof typeof statuses }, 'workflow'>
+type Block = Node<{ kind: NodeType; status?: keyof typeof statuses; highlighted?: boolean }, 'workflow'>
 type Snapshot = { id: string; label: string }
-export type EditorProps = { workflowId?: string }
+export type EditorProps = { workflowId?: string; ciRunId?: string }
 
 function WorkflowBlock({ data, selected }: NodeProps<Block>) {
   const { kind } = data
   const [label, icon] = labels[kind]
   return (
-    <div className={`garden-node ${selected ? 'selected' : ''}`}>
+    <div className={`garden-node ${selected ? 'selected' : ''}`} data-ci-highlight={data.highlighted || undefined}>
       {kind !== 'start' && <Handle type="target" position={Position.Left} />}
       <span className="garden-icon" aria-hidden="true">{icon}</span>
       <span>{label}{data.status && <small data-node-status={data.status}>{statuses[data.status]}</small>}</span>
@@ -47,8 +49,9 @@ function WorkflowBlock({ data, selected }: NodeProps<Block>) {
 
 const flowNodeTypes = { workflow: WorkflowBlock }
 
-export function WorkflowEditor({ workflowId }: EditorProps) {
+export function WorkflowEditor({ workflowId, ciRunId }: EditorProps) {
   const [workflow, setWorkflow] = useState<EditableWorkflow>()
+  const [ciRun, setCiRun] = useState<Run>()
   const [snapshots, setSnapshots] = useState<Snapshot[]>([])
   const [snapshotId, setSnapshotId] = useState('')
   const [selectedId, setSelectedId] = useState('')
@@ -62,6 +65,20 @@ export function WorkflowEditor({ workflowId }: EditorProps) {
   const [notice, setNotice] = useState<{ text: string; error?: boolean }>()
   const activeNode = workflow?.nodes.find(node => node.id === selectedId)
   const activeNodeView = runView?.nodes[selectedId]
+  const highlight = ciRun?.workflowId === workflowId && ciRun ? getHighlight(ciRun.ci) : undefined
+
+  useEffect(() => {
+    if (!ciRunId) return
+    let active = true
+    void getJson<Run>(`/runs/${encodeURIComponent(ciRunId)}`).then(run => {
+      if (!active || run.workflowId !== workflowId) return
+      setCiRun(run)
+      setSelectedId(run.ci.nodeId ?? run.ci.gateNodeId ?? '')
+    }).catch((error: unknown) => {
+      if (active) setNotice({ text: error instanceof Error ? error.message : 'Не удалось загрузить решение CI.', error: true })
+    })
+    return () => { active = false }
+  }, [ciRunId, workflowId])
 
   useEffect(() => {
     let active = true
@@ -131,14 +148,19 @@ export function WorkflowEditor({ workflowId }: EditorProps) {
 
   const nodes: Block[] = (workflow?.nodes ?? []).map(node => ({
     id: node.id, type: 'workflow', position: { x: node.x, y: node.y },
-    data: { kind: node.type, status: runView?.nodes[node.id]?.status }, selected: node.id === selectedId,
+    data: { kind: node.type, status: runView?.nodes[node.id]?.status, highlighted: highlight?.nodeIds.includes(node.id) }, selected: node.id === selectedId,
   }))
-  const edges = (workflow?.edges ?? []).map(edge => ({
-    id: `${edge.from}:${edge.branch}`, source: edge.from, target: edge.to, sourceHandle: edge.branch,
-    label: edge.branch === 'next' ? undefined : edge.branch === 'yes' ? 'Да' : 'Нет',
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#659483' },
-    style: { stroke: '#659483', strokeWidth: 1.6 },
-  }))
+  const edges = (workflow?.edges ?? []).map(edge => {
+    const highlighted = highlight?.edge?.from === edge.from && highlight.edge.branch === edge.branch
+    const color = highlighted ? '#ffad9e' : '#659483'
+    return {
+      id: `${edge.from}:${edge.branch}`, source: edge.from, target: edge.to, sourceHandle: edge.branch,
+      label: edge.branch === 'next' ? undefined : edge.branch === 'yes' ? 'Да' : 'Нет',
+      markerEnd: { type: MarkerType.ArrowClosed, color },
+      style: { stroke: color, strokeWidth: highlighted ? 3 : 1.6 },
+      className: highlighted ? 'garden-ci-edge' : undefined,
+    }
+  })
 
   return (
     <main className="garden">
@@ -159,6 +181,10 @@ export function WorkflowEditor({ workflowId }: EditorProps) {
           <button className="garden-primary" disabled={pending || !workflow.id || !snapshotId} onClick={() => void submit('run')}>▷ Запустить</button>
         </div>}
       </section>
+      {ciRun && highlight && <p className="garden-notice">
+        <a href={runsUrl(ciRun.workflowId, ciRun.id)}>{ciRun.id}</a> · CI {ciRun.ci.status}
+        {highlight.findingId && ` · ${highlight.findingId}`}
+      </p>}
       {notice && <p className={`garden-notice ${notice.error ? 'error' : ''}`} role={notice.error ? 'alert' : 'status'}>{notice.text}</p>}
       {accepted && workflow?.id && <section className="garden-run-accepted" aria-label="Текущий запуск">
         <a href={runsUrl(workflow.id, accepted.id)}>{accepted.id}</a> <span data-run-status={runStatus}>{{
