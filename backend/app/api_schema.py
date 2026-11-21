@@ -20,6 +20,8 @@ NUMBER = {"type": "number"}
 BOOL = {"type": "boolean"}
 MAP = {"type": "object"}
 CATALOG_SOURCE = choice("training", "osv", "custom")
+NODE_TYPE = choice("start", "secrets", "sca", "sast", "gradle", "coverage", "ai", "condition", "telegram", "finish")
+NODE_TEMPLATE = {"name": STRING, "description": STRING, "type": NODE_TYPE, "settings": MAP}
 GRAPH = {"nodes": array(ref("Node")), "edges": array(ref("Edge"))}
 DRAFT = {"name": STRING, "schedule": {"anyOf": [ref("Schedule"), {"type": "null"}]},
          "snapshotId": {"type": ["string", "null"]}, **GRAPH}
@@ -32,10 +34,11 @@ SCHEMAS = {
                            updating=BOOL, osvUpdatedAt={"type": ["string", "null"]}, error={"type": ["string", "null"]}),
     "Schedule": obj(["time", "timezone"], time=STRING, timezone=STRING),
     "Node": obj(["id", "type", "x", "y", "settings"], id=STRING, x=NUMBER, y=NUMBER,
-                type=choice("start", "secrets", "sca", "sast", "gradle", "coverage", "ai", "condition", "telegram", "finish"),
-                settings=MAP),
+                type=NODE_TYPE, settings=MAP, name=STRING, description=STRING),
+    "NodeTemplateDraft": obj(NODE_TEMPLATE, **NODE_TEMPLATE),
+    "NodeTemplate": obj(["id", *NODE_TEMPLATE], id=STRING, **NODE_TEMPLATE),
     "Edge": obj(["from", "to", "branch"], **{"from": STRING, "to": STRING, "branch": choice("next", "yes", "no")}),
-    "Snapshot": obj(["id", "label"], id=STRING, label=STRING),
+    "Snapshot": obj(["id", "label"], id=STRING, label=STRING, catalogSource=choice("organizer")),
     "WorkflowDraft": obj(["name", "nodes", "edges"], **DRAFT, warnings=array(STRING)),
     "WorkflowUpdate": obj(["revision", "name", "nodes", "edges"], **DRAFT, revision=INTEGER),
     "Workflow": obj(["id", "revision", "name", "nodes", "edges"], **DRAFT, id=STRING, revision=INTEGER),
@@ -69,11 +72,16 @@ SCHEMAS = {
                status=choice("queued", "running", "succeeded", "failed"), workflowId={"type": ["string", "null"]},
                workflowRevision={"type": ["integer", "null"]}, snapshotId=STRING, baseSnapshotId={"type": ["string", "null"]},
                createdAt={"type": "string", "format": "date-time"}, trigger=choice("manual", "schedule", "ci"),
+               analysisVersion=STRING, catalogSource=choice("training", "organizer", "custom", "osv"),
                ci=ref("CiResult"), findings=array(ref("Finding")), steps=array(ref("RunStep")),
+               graph=obj(["nodes", "edges"], **GRAPH), fixableFindingIds=array(STRING),
                comparison={"anyOf": [ref("Comparison"), {"type": "null"}]},
                recommendations=array(obj(["findingId", "source", "explanation", "action"],
                                          findingId=STRING, source=STRING, explanation=STRING, action=STRING)),
                integrationErrors=array(obj(["nodeId", "message"], nodeId=STRING, message=STRING)),
+               technicalErrors=array(obj(["stage", "code", "message"],
+                                         stage=choice("ai", "telegram", "analysis", "comparison"),
+                                         code=STRING, message=STRING, nodeId=STRING)),
                report=ref("RunReport")),
     "RunReport": obj(["summary", "delivery"], summary=STRING, delivery=choice("sent", "failed", "skipped"), messageId=INTEGER),
     "RunEvent": obj(["seq", "runId", "type", "at", "data"], seq=INTEGER, runId=STRING,
@@ -111,6 +119,9 @@ PATHS = {
     "/advisory-catalog/source": describe(operation("post", 200, ref("AdvisoryCatalog"),
                                                  obj(["source"], source=CATALOG_SOURCE))),
     "/snapshots": describe(operation("get", 200, array(ref("Snapshot")))),
+    "/snapshots/import-repository": describe(operation("post", 201, ref("Snapshot"), obj(["url"], url=STRING))),
+    "/training/runs": describe(operation("post", 202, ref("RunAccepted"),
+                                         obj(["variant"], variant=choice("before", "fixed")))),
     "/snapshots/import": describe(operation("post", 201, ref("Snapshot"),
                                             obj(["file"], file={"type": "string", "format": "binary"}), request_content="multipart/form-data")),
     "/workflows": describe(operation("get", 200, array(ref("Workflow"))),
@@ -122,6 +133,9 @@ PATHS = {
     "/workflows/{id}/runs": describe(operation("get", 200, array(ref("Run"))),
                                      operation("post", 202, ref("RunAccepted"), ref("RunRequest"))),
     "/workflows/draft": describe(operation("post", 200, ref("WorkflowDraft"), obj(["prompt"], prompt=STRING))),
+    "/node-templates/draft": describe(operation("post", 200, ref("NodeTemplateDraft"), obj(["prompt"], prompt=STRING))),
+    "/node-templates": describe(operation("get", 200, array(ref("NodeTemplate"))),
+                                operation("post", 201, ref("NodeTemplate"), ref("NodeTemplateDraft"))),
     "/workflows/{id}/findings/{findingId}/history": describe(operation("get", 200, ref("FindingHistory"))),
     "/runs/{id}": describe(operation("get", 200, ref("Run"))),
     "/runs/{id}/events": describe(operation("get", 200, {"type": "string", "description": "SSE data is RunEvent JSON"},

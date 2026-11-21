@@ -1,7 +1,8 @@
 # Copy to .github/workflows/cyber-garden.yml in the checked repository.
 name: Cyber Garden
 on:
-  pull_request:
+  pull_request_target:
+    branches: [main]
     types: [opened, reopened, synchronize]
 
 permissions:
@@ -10,7 +11,8 @@ permissions:
 jobs:
   scan:
     name: Cyber Garden security scan
-    # Use this Windows runner only with trusted branches in your private demo repository.
+    # Keep this workflow and its client on the protected main branch.
+    # The client reads the PR commit via git archive.
     if: github.event.repository.private && github.event.pull_request.head.repo.id == github.event.pull_request.base.repo.id
     runs-on: [self-hosted, Windows, cyber-garden]
     timeout-minutes: 8
