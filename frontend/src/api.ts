@@ -26,14 +26,43 @@ function isApiErrorBody(value: unknown): value is ApiErrorBody {
   )
 }
 
-export async function getJson<T>(path: string): Promise<T> {
+export function getJson<T>(path: string): Promise<T> {
+  return requestJson<T>(path, { method: 'GET' })
+}
+
+export async function postJson<T>(path: string, body: unknown): Promise<T> {
+  let json: string | undefined
+  try {
+    json = JSON.stringify(body)
+  } catch (cause) {
+    throw new Error('Не удалось преобразовать тело запроса в JSON.', { cause })
+  }
+  if (json === undefined) {
+    throw new Error('Не удалось преобразовать тело запроса в JSON.')
+  }
+
+  return requestJson<T>(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: json,
+  })
+}
+
+const postErrorMessages: Partial<Record<number, string>> = {
+  400: 'Некорректный запрос.',
+  409: 'Запрос конфликтует с текущим состоянием ресурса.',
+  422: 'Сервер не может обработать отправленные данные.',
+  500: 'Внутренняя ошибка сервера. Попробуйте позже.',
+}
+
+async function requestJson<T>(path: string, options: RequestInit): Promise<T> {
   const configuredBase: string | undefined = import.meta.env.VITE_API_BASE
   const base = (configuredBase ?? '/api/v1').replace(/\/+$/, '')
   const url = `${base}/${path.replace(/^\/+/, '')}`
 
   let response: Response
   try {
-    response = await fetch(url, { method: 'GET' })
+    response = await fetch(url, options)
   } catch (cause) {
     throw new Error('Сервер недоступен. Проверьте подключение и попробуйте снова.', { cause })
   }
@@ -55,9 +84,10 @@ export async function getJson<T>(path: string): Promise<T> {
       throw new ApiError(response.status, message, body.code)
     }
 
+    const postMessage = options.method === 'POST' ? postErrorMessages[response.status] : undefined
     const message = response.status === 404
       ? 'Ресурс не найден'
-      : `Запрос завершился ошибкой (HTTP ${response.status}).`
+      : postMessage ?? `Запрос завершился ошибкой (HTTP ${response.status}).`
     throw new ApiError(response.status, message)
   }
 
