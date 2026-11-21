@@ -1,6 +1,6 @@
-import { Background, BaseEdge, Controls, Handle, MarkerType, Position, ReactFlow, getSmoothStepPath } from '@xyflow/react'
-import type { Connection, EdgeProps, Node, NodeChangeset, NodeProps, Viewport } from '@xyflow/react'
-import { useEffect, useRef, useState } from 'react'
+import { Background, BaseEdge, Controls, Handle, MarkerType, Position, ReactFlow, getSmoothStepPath, useNodesState } from '@xyflow/react'
+import type { Connection, Edge, EdgeProps, Node, NodeChangeset, NodeProps, ReactFlowInstance, Viewport } from '@xyflow/react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getJson } from '../api'
 import type { SnapshotRef } from '../api'
 import { getHighlight } from '../runs/ci'
@@ -63,7 +63,7 @@ const statuses = { queued: 'В очереди', running: 'Выполняется
 type Block = Node<{ kind: NodeType; detail?: string; status?: keyof typeof statuses; highlighted?: boolean }, 'workflow'>
 export type EditorProps = { workflowId?: string; ciRunId?: string; copiedTemplate?: boolean }
 
-function WorkflowBlock({ data, selected }: NodeProps<Block>) {
+const WorkflowBlock = memo(function WorkflowBlock({ data, selected }: NodeProps<Block>) {
   const { kind } = data
   const [label, description, tone] = labels[kind]
   return (
@@ -81,7 +81,7 @@ function WorkflowBlock({ data, selected }: NodeProps<Block>) {
       </> : kind !== 'finish' && <Handle type="source" id="next" position={Position.Right} aria-label="Выход" />}
     </div>
   )
-}
+})
 
 const flowNodeTypes = { workflow: WorkflowBlock }
 
@@ -103,11 +103,61 @@ function WorkflowEdge(props: EdgeProps) {
 const flowEdgeTypes = { workflow: WorkflowEdge }
 
 
+type FlowCanvasProps = {
+  nodes: Block[]
+  edges: Edge[]
+  pending: boolean
+  onInit: (instance: ReactFlowInstance<Block>) => void
+  onMoveStart: (event: MouseEvent | TouchEvent | null) => void
+  onPositionCommit: (positions: Map<string, { x: number; y: number }>) => void
+  onConnect: (connection: Connection) => void
+  onPickNode: (id: string) => void
+  onPickEdge: (id: string) => void
+  onClearSelection: () => void
+}
+
+const FlowCanvas = memo(function FlowCanvas({
+  nodes, edges, pending, onInit, onMoveStart, onPositionCommit, onConnect, onPickNode, onPickEdge, onClearSelection,
+}: FlowCanvasProps) {
+  const [localNodes, setLocalNodes] = useNodesState(nodes)
+  useEffect(() => {
+    setLocalNodes(current => {
+      const existing = new Map(current.map(node => [node.id, node]))
+      return nodes.map(node => {
+        const previous = existing.get(node.id)
+        // Dropping measured dimensions invalidates React Flow's cached handle bounds.
+        return previous?.measured ? { ...node, measured: previous.measured } : node
+      })
+    })
+  }, [nodes, setLocalNodes])
+
+  const changeNodes = useCallback((changes: NodeChangeset<Block>) => {
+    setLocalNodes(current => changes.applyTo(current))
+    const committed = new Map(changes.getByType('position').flatMap(change =>
+      change.position && change.dragging !== true ? [[change.id, change.position] as const] : [],
+    ))
+    if (committed.size) onPositionCommit(committed)
+  }, [onPositionCommit, setLocalNodes])
+
+  return <ReactFlow nodes={localNodes} edges={edges} nodeTypes={flowNodeTypes} edgeTypes={flowEdgeTypes}
+    className="dark" minZoom={.2} maxZoom={2} zIndexMode="manual"
+    nodesDraggable={!pending} nodesConnectable={!pending} deleteKeyCode={null}
+    onInit={onInit} onMoveStart={onMoveStart} onNodesChange={changeNodes} onConnect={onConnect}
+    onNodeClick={(_, node) => onPickNode(node.id)} onEdgeClick={(_, edge) => onPickEdge(edge.id)}
+    onPaneClick={onClearSelection}>
+    <Background color="#33464e" gap={24} size={1.2} />
+    <Controls showInteractive={false} />
+  </ReactFlow>
+})
+
 export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorProps) {
   const [workflow, setWorkflow] = useState<EditableWorkflow>()
   const canvas = useRef<HTMLElement>(null)
   const draftRef = useRef<EditableWorkflow | undefined>(undefined)
-  const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, zoom: 1 })
+  const flow = useRef<ReactFlowInstance<Block>>(null)
+  const cameraTouched = useRef(false)
+  const [graphGeneration, setGraphGeneration] = useState(0)
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(false)
   const [savedWorkflow, setSavedWorkflow] = useState<EditableWorkflow>()
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [selectedEdge, setSelectedEdge] = useState('')
@@ -128,27 +178,44 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorPr
   const activeNode = workflow?.nodes.find(node => node.id === selectedId)
   const activeNodeView = runView?.nodes[selectedId]
   const missingChannel = workflow?.nodes.find(node => node.type === 'telegram' && !node.settings.channelId)
-  const highlight = ciRun?.workflowId === workflowId && ciRun ? getHighlight(ciRun.ci) : undefined
+  const highlight = useMemo(
+    () => ciRun?.workflowId === workflowId && ciRun ? getHighlight(ciRun.ci) : undefined,
+    [ciRun, workflowId],
+  )
 
   useEffect(() => { draftRef.current = workflow }, [workflow])
-  const graphId = workflow?.id ?? workflow?.name
+  const fit = useCallback((draft: EditableWorkflow) => {
+    const element = canvas.current
+    if (!element) return
+    const header = element.querySelector<HTMLElement>('.garden-canvas-header')
+    void flow.current?.setViewport(fittedViewport(draft, element.clientWidth, element.clientHeight - (header?.offsetHeight ?? 0)))
+  }, [])
+
+  const initializeFlow = useCallback((instance: ReactFlowInstance<Block>) => {
+    flow.current = instance
+    if (draftRef.current && !cameraTouched.current) fit(draftRef.current)
+  }, [fit])
+
+  const markCameraTouched = useCallback((event: MouseEvent | TouchEvent | null) => {
+    if (event) cameraTouched.current = true
+  }, [])
+
   useEffect(() => {
     const element = canvas.current
-    if (!element || !graphId) return
+    if (!element) return
     const resize = new ResizeObserver(() => {
-      const draft = draftRef.current
-      if (draft) setViewport(fittedViewport(draft, element.clientWidth, element.clientHeight - 42))
+      if (!cameraTouched.current && draftRef.current) fit(draftRef.current)
     })
     resize.observe(element)
     return () => resize.disconnect()
-  }, [graphId])
+  }, [graphGeneration, fit])
 
   function order() {
-    const element = canvas.current
-    if (!workflow || !element) return
+    if (!workflow) return
     const next = orderGraph(workflow)
     setWorkflow(next)
-    setViewport(fittedViewport(next, element.clientWidth, element.clientHeight - 42))
+    cameraTouched.current = true
+    fit(next)
   }
 
   useEffect(() => {
@@ -171,6 +238,8 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorPr
       getJson<SnapshotRef[]>('/snapshots'),
     ]).then(([loaded, choices]) => {
       if (!active) return
+      cameraTouched.current = false
+      setGraphGeneration(value => value + 1)
       setWorkflow(loaded)
       setSavedWorkflow(loaded)
       setSnapshots(choices)
@@ -183,29 +252,48 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorPr
     return () => { active = false }
   }, [workflowId, loadAttempt])
 
-  function moveNodes(changes: NodeChangeset<Block>) {
-    const positions = new Map(changes.getByType('position').flatMap(change =>
-      change.position ? [[change.id, change.position] as const] : [],
-    ))
-    if (!positions.size) return
-    setWorkflow(current => current && ({
-      ...current,
-      nodes: current.nodes.map(node => ({ ...node, ...positions.get(node.id) })),
-    }))
-  }
+  const commitPositions = useCallback((positions: Map<string, { x: number; y: number }>) => {
+    setWorkflow(current => {
+      if (!current) return current
+      let changed = false
+      const nextNodes = current.nodes.map(node => {
+        const position = positions.get(node.id)
+        if (!position || (node.x === position.x && node.y === position.y)) return node
+        changed = true
+        return { ...node, ...position }
+      })
+      return changed ? { ...current, nodes: nextNodes } : current
+    })
+  }, [])
 
   function addBlock(type: NodeType) {
     if (!workflow) return
     const next = addNode(workflow, type, { x: 90 + (workflow.nodes.length % 4) * 195, y: 370 })
     setWorkflow(next)
     setSelectedId(next.nodes[next.nodes.length - 1].id)
+    setInspectorCollapsed(false)
     setInspectorOpen(true)
   }
 
-  function linkBlocks({ source, target, sourceHandle }: Connection) {
+  const linkBlocks = useCallback(({ source, target, sourceHandle }: Connection) => {
     const branch = sourceHandle === 'yes' || sourceHandle === 'no' ? sourceHandle : 'next'
     setWorkflow(current => current && connect(current, { from: source, to: target, branch }))
-  }
+  }, [])
+  const pickNode = useCallback((id: string) => {
+    setSelectedId(id)
+    setSelectedEdge('')
+    setInspectorCollapsed(false)
+    setInspectorOpen(true)
+  }, [])
+  const pickEdge = useCallback((id: string) => {
+    setSelectedEdge(id)
+    setSelectedId('')
+  }, [])
+  const clearSelection = useCallback(() => {
+    setSelectedId('')
+    setSelectedEdge('')
+    setInspectorOpen(false)
+  }, [])
 
   async function submit(action: 'save' | 'run') {
     if (!workflow || pending) return
@@ -233,11 +321,11 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorPr
     }
   }
 
-  const nodes: Block[] = (workflow?.nodes ?? []).map(node => ({
+  const nodes = useMemo<Block[]>(() => (workflow?.nodes ?? []).map(node => ({
     id: node.id, type: 'workflow', zIndex: 2, position: { x: node.x, y: node.y },
     data: { kind: node.type, detail: node.type === 'condition' ? conditionLabel(node.settings) : undefined, status: runView?.nodes[node.id]?.status, highlighted: highlight?.nodeIds.includes(node.id) }, selected: node.id === selectedId,
-  }))
-  const edges = (workflow?.edges ?? []).map(edge => {
+  })), [workflow?.nodes, runView, highlight, selectedId])
+  const edges = useMemo(() => (workflow?.edges ?? []).map(edge => {
     const highlighted = highlight?.edge?.from === edge.from && highlight.edge.branch === edge.branch
     const id = `${edge.from}:${edge.branch}`
     const related = selectedEdge === id || (selectedId !== '' && (edge.from === selectedId || edge.to === selectedId))
@@ -247,15 +335,15 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorPr
       selected: id === selectedEdge,
       markerEnd: { type: MarkerType.ArrowClosed, color },
       style: { stroke: color, strokeWidth: highlighted || related ? 2.6 : 1.6 },
-      className: highlighted ? 'garden-ci-edge' : undefined,
+      className: highlighted ? 'garden-ci-edge' : related ? 'garden-related-edge' : undefined,
     }
-  })
+  }), [workflow?.edges, highlight, selectedId, selectedEdge])
 
   return (
     <div className="garden-shell">
       <WorkspaceNav workflowId={workflow?.id ?? workflowId} section="editor" />
       <main className="garden">
-      <section className="garden-heading">
+      <section className="garden-heading garden-editor-heading">
         <div className="garden-heading-text">
           <p className="garden-kicker">Сценарии <span>/</span> Конструктор</p>
           <h1>{workflow?.name ?? 'Редактор сценариев'}</h1>
@@ -271,6 +359,8 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorPr
       {workflow && <div className="garden-toolbar">
         <div className="garden-toolbar-group"><a href="?workflow=new"><Icon name="plus" size={15} />Новый сценарий</a>
           <DraftDialog disabled={pending} onOpenDraft={({ warnings, ...draft }) => {
+            cameraTouched.current = false
+            setGraphGeneration(value => value + 1)
             setWorkflow(draft)
             setDraftWarnings(warnings ?? [])
             clearAccepted()
@@ -289,12 +379,12 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorPr
       </div>}
       {draftWarnings.length > 0 && <section className="garden-notice garden-draft-notice" aria-label="Предупреждения черновика">
         <ul>{draftWarnings.map(warning => <li key={warning}>{warning}</li>)}</ul>
-        {missingChannel && <button type="button" onClick={() => { setSelectedId(missingChannel.id); setInspectorOpen(true) }}>Настроить Telegram</button>}
+        {missingChannel && <button type="button" onClick={() => { setSelectedId(missingChannel.id); setInspectorCollapsed(false); setInspectorOpen(true) }}>Настроить Telegram</button>}
       </section>}
       {copiedTemplate && workflow && <section className="garden-notice garden-copy-setup" aria-label="Настройка копии">
         <strong>Настройте свою копию</strong>
         {!snapshotId && <span>Выберите снимок проекта.</span>}
-        {missingChannel && <button type="button" onClick={() => { setSelectedId(missingChannel.id); setInspectorOpen(true) }}>
+        {missingChannel && <button type="button" onClick={() => { setSelectedId(missingChannel.id); setInspectorCollapsed(false); setInspectorOpen(true) }}>
           Выбрать канал Telegram
         </button>}
         {snapshotId && !missingChannel && <span>Сохраните выбранные настройки.</span>}
@@ -312,7 +402,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorPr
       </section>}
       {loading && <p className="garden-notice" role="status">Загрузка сценария…</p>}
       {!loading && !workflow && <button className="garden-retry" onClick={() => { setLoading(true); setNotice(undefined); setLoadAttempt(attempt => attempt + 1) }}>Повторить</button>}
-      {workflow && <div className="garden-workspace">
+      {workflow && <div className="garden-workspace" data-inspector-collapsed={inspectorCollapsed}>
         <aside className="garden-panel garden-palette" aria-label="Палитра">
           <h2>Палитра блоков</h2>
           {palette.map(group => <section key={group.title}><h3>{group.title}</h3>
@@ -323,26 +413,26 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate }: EditorPr
         </aside>
         <section ref={canvas} className="garden-canvas" aria-label="Граф сценария">
           <div className="garden-canvas-header"><div><Icon name="graph" size={16} /><strong>Граф сценария</strong></div>
-            <button className="garden-inspector-toggle" onClick={() => setInspectorOpen(open => !open)} aria-expanded={inspectorOpen} aria-controls="workflow-inspector"><Icon name="panel" size={16} />Настройки</button>
+            <button className="garden-inspector-toggle" onClick={() => { setInspectorCollapsed(false); setInspectorOpen(open => !open) }} aria-expanded={inspectorOpen} aria-controls="workflow-inspector"><Icon name="panel" size={16} />Настройки</button>
           </div>
-          <ReactFlow nodes={nodes} edges={edges} nodeTypes={flowNodeTypes} edgeTypes={flowEdgeTypes} className="dark" minZoom={0.2} maxZoom={2} viewport={viewport} onViewportChange={setViewport} zIndexMode="manual"
-            nodesDraggable={!pending} nodesConnectable={!pending} deleteKeyCode={null}
-            onNodesChange={moveNodes} onConnect={linkBlocks}
-            onNodeClick={(_, node) => { setSelectedId(node.id); setSelectedEdge(''); setInspectorOpen(true) }}
-            onEdgeClick={(_, edge) => { setSelectedEdge(edge.id); setSelectedId('') }}
-            onPaneClick={() => { setSelectedId(''); setSelectedEdge(''); setInspectorOpen(false) }}>
-            <Background color="#33464e" gap={24} size={1.2} />
-            <button className="garden-layout" type="button" disabled={pending} onClick={order}><Icon name="layout" size={15} />Упорядочить</button>
-            <Controls showInteractive={false} />
-          </ReactFlow>
+          <FlowCanvas nodes={nodes} edges={edges} pending={pending} onInit={initializeFlow} onMoveStart={markCameraTouched}
+            onPositionCommit={commitPositions} onConnect={linkBlocks} onPickNode={pickNode}
+            onPickEdge={pickEdge} onClearSelection={clearSelection} />
+          <button className="garden-layout" type="button" disabled={pending} onClick={order}><Icon name="layout" size={15} />Упорядочить</button>
         </section>
         <aside className="garden-panel garden-settings" id="workflow-inspector" data-open={inspectorOpen} aria-label="Настройки блока">
-          <div className="garden-inspector-title"><h2>Настройки</h2><button className="garden-inspector-close" onClick={() => setInspectorOpen(false)} aria-label="Закрыть настройки">×</button></div>
+          <div className="garden-inspector-title"><h2>Настройки</h2><button className="garden-inspector-close" onClick={() => { setInspectorOpen(false); setInspectorCollapsed(true) }} aria-label="Закрыть настройки">×</button></div>
           {activeNode ? <>
             <div className="garden-inspector-node" data-node-tone={labels[activeNode.type][2]}>
               <span className="garden-icon"><Icon name={activeNode.type} /></span><div><h3>{labels[activeNode.type][0]}</h3><code>{activeNode.id}</code></div>
             </div>
             <p>{labels[activeNode.type][1]}</p>
+            {activeNode.type === 'condition' && <div className="garden-branch-summary">
+              {(['yes', 'no'] as const).map(branch => {
+                const target = workflow.nodes.find(node => node.id === workflow.edges.find(edge => edge.from === activeNode.id && edge.branch === branch)?.to)
+                return <p key={branch}><code>{branch.toUpperCase()}</code> {target ? labels[target.type][0] : 'Нет связи'}</p>
+              })}
+            </div>}
             <NodeSettings node={activeNode} schedule={workflow.schedule} disabled={pending}
               onSettingsChange={settings => setWorkflow(current => current && ({
                 ...current, nodes: current.nodes.map(node => node.id === activeNode.id ? { ...node, settings } : node),

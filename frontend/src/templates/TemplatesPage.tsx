@@ -15,6 +15,14 @@ export function TemplatesPage({ workflowId }: { workflowId: string }) {
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
   const inFlight = useRef(false)
+  const dialog = useRef<HTMLDialogElement>(null)
+  const [publishing, setPublishing] = useState(false)
+
+  function showPublishForm() {
+    setError('')
+    setPublishing(true)
+    dialog.current?.showModal()
+  }
 
   useEffect(() => {
     let active = true
@@ -52,6 +60,7 @@ export function TemplatesPage({ workflowId }: { workflowId: string }) {
       setTemplates(current => [...(current ?? []), template])
       setName('')
       setDescription('')
+      dialog.current?.close()
     })
   }
 
@@ -67,32 +76,43 @@ export function TemplatesPage({ workflowId }: { workflowId: string }) {
     <main className="garden">
     <section className="garden-results">
       <p className="garden-kicker">Рабочее пространство <span>/</span> Каталог</p>
-      <div className="garden-page-heading"><h1>Шаблоны сценариев</h1></div>
+      <div className="garden-page-heading"><h1>Шаблоны сценариев</h1>
+        {templates && templates.length > 0 && <button className="garden-primary" onClick={showPublishForm}>Опубликовать шаблон</button>}
+      </div>
       {!templates && !error && <p role="status">Загрузка шаблонов…</p>}
-      {error && <><p role="alert">{error}</p>
+      {error && !publishing && <><p role="alert">{error}</p>
         {!templates && <button onClick={() => { setError(''); setAttempt(value => value + 1) }}>Повторить</button>}
       </>}
-      {templates && <div className="garden-template-layout">
-        <section aria-label="Каталог шаблонов">
-        {templates.length === 0 && <p>В каталоге пока нет шаблонов.</p>}
-        <div className="garden-findings garden-template-grid">
-          {templates.map(template => <article className="garden-finding" key={template.id} data-template-id={template.id}>
-            <span className="garden-template-icon"><Icon name="templates" /></span><h2>{template.name}</h2><p>{template.description}</p>
-            <p className="garden-meta">{template.workflow.nodes.length} блоков · ревизия {template.workflow.revision}</p>
-            <button disabled={pending} onClick={() => openCopiedTemplate(template.id)}>Создать копию</button>
-          </article>)}
-        </div>
-        </section>
+      {templates && templates.length === 0 && <section className="garden-template-empty">
+        <span className="garden-template-icon"><Icon name="templates" size={23} /></span>
+        <h2>Здесь появятся ваши шаблоны</h2>
+        <p>Публикуйте готовые сценарии, чтобы команда могла использовать их как основу для своих проверок.</p>
+        <button className="garden-primary" disabled={!workflows.length} onClick={showPublishForm}>Опубликовать первый шаблон</button>
+      </section>}
+      {templates && <div className="garden-findings garden-template-grid">
+        {templates.map(template => <article className="garden-finding" key={template.id} data-template-id={template.id}>
+          <span className="garden-template-icon"><Icon name="templates" /></span>
+          <h2>{template.name}</h2>{template.description && <p>{template.description}</p>}
+          <p className="garden-meta">Блоков: {template.workflow.nodes.length} · Ревизия {template.workflow.revision}</p>
+          <button disabled={pending} onClick={() => openCopiedTemplate(template.id)}>Создать копию</button>
+        </article>)}
+      </div>}
+      <dialog className="garden-dialog" ref={dialog} aria-labelledby="publish-template-title" onClose={() => setPublishing(false)}
+        onCancel={event => { if (pending) event.preventDefault() }}>
+        <h2 id="publish-template-title">Опубликовать шаблон</h2>
         <form className="garden-template-form" onSubmit={event => { event.preventDefault(); publish() }}>
-          <h2>Опубликовать сценарий</h2>
           <label>Сценарий<select value={selectedWorkflow} onChange={event => setSelectedWorkflow(event.target.value)}>
             {workflows.map(workflow => <option value={workflow.id} key={workflow.id}>{workflow.name}</option>)}
           </select></label>
           <label>Название<input required maxLength={120} value={name} onChange={event => setName(event.target.value)} /></label>
           <label>Описание<textarea maxLength={500} rows={3} value={description} onChange={event => setDescription(event.target.value)} /></label>
-          <button disabled={!selectedWorkflow || !name.trim() || pending}>Опубликовать</button>
+          {error && <p role="alert">{error}</p>}
+          <div className="garden-template-dialog-actions">
+            <button type="button" disabled={pending} onClick={() => dialog.current?.close()}>Отмена</button>
+            <button className="garden-primary" disabled={!selectedWorkflow || !name.trim() || pending}>{pending ? 'Публикация…' : 'Опубликовать'}</button>
+          </div>
         </form>
-      </div>}
+      </dialog>
     </section>
     </main>
   </div>

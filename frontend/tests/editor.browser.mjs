@@ -145,6 +145,16 @@ try {
     document.querySelector('[data-id="tg"] .garden-node').click()
     await waitFor(() => settings.querySelector('.garden-connection-select')?.value === 'team-demo')
 
+    const flowDuringDrag = document.querySelector('.react-flow')
+    const stableElements = [
+      flowDuringDrag, flowDuringDrag.querySelector('.react-flow__background'),
+      ...flowDuringDrag.querySelectorAll('.react-flow__node, .react-flow__edge'),
+    ]
+    let edgeDisappeared = false
+    const observer = new MutationObserver(() => {
+      if (stableElements.some(element => !element?.isConnected)) edgeDisappeared = true
+    })
+    observer.observe(flowDuringDrag, { subtree: true, childList: true })
     const canvas = document.querySelector('.garden-canvas')
     const rect = condition.getBoundingClientRect()
     const x = rect.left + rect.width / 2
@@ -154,6 +164,9 @@ try {
     await waitFor(() => Math.abs(condition.getBoundingClientRect().left - rect.left) > 5)
     await waitFor(() => globalThis.dragComplete)
     assert(canvas.contains(condition), 'Dragged condition still on canvas')
+    observer.disconnect()
+    assert(!edgeDisappeared && stableElements.every(element => element?.isConnected),
+      'Canvas, background, nodes and edges retain their DOM identity on drag')
 
     const select = document.querySelector('.garden-snapshot-select')
     assert(select.options.length === 5, 'Snapshot options loaded from API')
@@ -459,12 +472,17 @@ try {
       }
       throw new Error('Template catalog did not reach expected state')
     }
-    const form = await waitFor(() => document.querySelector('.garden-template-form'))
-    if (!document.querySelector('.garden-results').textContent.includes('пока нет шаблонов')) throw new Error('Missing empty catalog state')
+    const publish = await waitFor(() => document.querySelector('.garden-template-empty button'))
+    if (!document.querySelector('.garden-template-empty').textContent.includes('Здесь появятся ваши шаблоны')) throw new Error('Missing empty catalog state')
+    publish.click()
+    const form = await waitFor(() => document.querySelector('dialog[open] .garden-template-form'))
     const input = form.querySelector('input')
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'Проверка PR')
     input.dispatchEvent(new Event('input', { bubbles: true }))
-    await waitFor(() => !form.querySelector('button').disabled)
+    await waitFor(() => !form.querySelector('button:last-child').disabled)
+    form.querySelector('button[type="button"]').click()
+    publish.click()
+    if (input.value !== 'Проверка PR') throw new Error('Closing the modal discarded the template draft')
     form.requestSubmit()
     const card = await waitFor(() => document.querySelector('[data-template-id="tpl-1"]'))
     const { getJson } = await import('/src/api.ts')
