@@ -21,6 +21,8 @@ BOOL = {"type": "boolean"}
 MAP = {"type": "object"}
 CATALOG_SOURCE = choice("training", "osv", "custom")
 FINDING_REVIEW_STATUS = choice("unreviewed", "in_progress", "false_positive")
+SNAPSHOT = {"id": STRING, "label": STRING, "catalogSource": choice("organizer"),
+            "createdAt": {"type": ["string", "null"], "format": "date-time"}, "fileCount": INTEGER}
 NODE_TYPE = choice("start", "secrets", "sca", "sast", "gradle", "coverage", "ai", "condition", "telegram", "finish")
 NODE_TEMPLATE = {"name": STRING, "description": STRING, "type": NODE_TYPE, "settings": MAP}
 GRAPH = {"nodes": array(ref("Node")), "edges": array(ref("Edge"))}
@@ -39,7 +41,18 @@ SCHEMAS = {
     "NodeTemplateDraft": obj(NODE_TEMPLATE, **NODE_TEMPLATE),
     "NodeTemplate": obj(["id", *NODE_TEMPLATE], id=STRING, **NODE_TEMPLATE),
     "Edge": obj(["from", "to", "branch"], **{"from": STRING, "to": STRING, "branch": choice("next", "yes", "no")}),
-    "Snapshot": obj(["id", "label"], id=STRING, label=STRING, catalogSource=choice("organizer")),
+    "Snapshot": obj(["id", "label", "fileCount"], **SNAPSHOT),
+    "SnapshotRun": obj(["id", "status", "ci", "role"], id=STRING, workflowId={"type": ["string", "null"]},
+                       createdAt={"type": ["string", "null"]}, role=choice("current", "base"),
+                       status=choice("queued", "running", "succeeded", "failed"), ci=choice("pending", "passed", "failed", "error")),
+    "SnapshotLibraryItem": obj(["id", "label", "fileCount", "runCount", "latestRun"], **SNAPSHOT, runCount=INTEGER,
+                               latestRun={"anyOf": [ref("SnapshotRun"), {"type": "null"}]}),
+    "SnapshotComparison": obj(["baseSnapshotId", "snapshotId", "files", "dependencies", "unresolvedBefore", "unresolvedAfter"],
+                              baseSnapshotId=STRING, snapshotId=STRING,
+                              files=obj(["added", "modified", "removed"], added=array(STRING), modified=array(STRING), removed=array(STRING)),
+                              dependencies=array(obj(["module", "group", "artifact", "before", "after"], module=STRING,
+                                                     group=STRING, artifact=STRING, before=array(STRING), after=array(STRING))),
+                              unresolvedBefore=INTEGER, unresolvedAfter=INTEGER),
     "WorkflowDraft": obj(["name", "nodes", "edges"], **DRAFT, warnings=array(STRING)),
     "WorkflowUpdate": obj(["revision", "name", "nodes", "edges"], **DRAFT, revision=INTEGER),
     "Workflow": obj(["id", "revision", "name", "nodes", "edges"], **DRAFT, id=STRING, revision=INTEGER),
@@ -133,6 +146,11 @@ PATHS = {
     "/advisory-catalog/source": describe(operation("post", 200, ref("AdvisoryCatalog"),
                                                  obj(["source"], source=CATALOG_SOURCE))),
     "/snapshots": describe(operation("get", 200, array(ref("Snapshot")))),
+    "/snapshots/library": describe(operation("get", 200, array(ref("SnapshotLibraryItem")))),
+    "/snapshots/{id}/runs": describe(operation("get", 200, array(ref("SnapshotRun")))),
+    "/snapshots/{id}/comparison": describe(operation("get", 200, ref("SnapshotComparison"), params=(
+        {"name": "againstSnapshotId", "in": "query", "required": True, "schema": STRING},))),
+    "/snapshots/{id}/rename": describe(operation("post", 200, ref("Snapshot"), obj(["label"], label=STRING))),
     "/snapshots/import-repository": describe(operation("post", 201, ref("Snapshot"), obj(["url"], url=STRING))),
     "/training/runs": describe(operation("post", 202, ref("RunAccepted"),
                                          obj(["variant"], variant=choice("before", "fixed")))),

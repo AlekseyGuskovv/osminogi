@@ -44,6 +44,16 @@ class Store:
             return db.execute("INSERT OR IGNORE INTO records(kind,id,body) VALUES(?,?,'{}')",
                               (self.kind(kind), key)).rowcount == 1
 
+    def insert_or_get(self, kind, key, value):
+        with self.connect() as db:
+            params = (self.kind(kind), key)
+            created = db.execute("INSERT INTO records(kind,id,body) VALUES(?,?,?) ON CONFLICT(kind,id) DO NOTHING",
+                                 (*params, json.dumps(value))).rowcount
+            if created:
+                return value
+            row = db.execute("SELECT body FROM records WHERE kind=? AND id=?", params).fetchone()
+            return json.loads(row[0])
+
     def get(self, kind, key):
         with self.connect() as db:
             row = db.execute("SELECT body FROM records WHERE kind=? AND id=?", (self.kind(kind), key)).fetchone()
@@ -54,6 +64,29 @@ class Store:
             rows = db.execute("SELECT body FROM records WHERE kind=? ORDER BY modified DESC,rowid DESC LIMIT ?",
                               (self.kind(kind), limit)).fetchall()
         return [json.loads(row[0]) for row in rows]
+
+    def snapshot_refs(self):
+        with self.connect() as db:
+            db.row_factory = sqlite3.Row
+            rows = db.execute("""SELECT id, json_extract(body,'$.label') AS label,
+                json_extract(body,'$.createdAt') AS createdAt,
+                coalesce(json_extract(body,'$.fileCount'), (SELECT count(*) FROM json_each(body,'$.files'))) AS fileCount,
+                CASE WHEN json_type(body,'$.organizerCatalog') IS NOT NULL THEN 'organizer' END AS catalogSource
+                FROM records WHERE kind=? ORDER BY modified DESC,rowid DESC""", (self.kind("snapshot"),))
+            return [{**{key: row[key] for key in ("id", "label", "createdAt", "fileCount")},
+                     **({"catalogSource": row["catalogSource"]} if row["catalogSource"] else {})} for row in rows]
+
+    def snapshot_run_rows(self, snapshot_id=None):
+        with self.connect() as db:
+            db.row_factory = sqlite3.Row
+            rows = db.execute("""SELECT id, json_extract(body,'$.workflowId') AS workflowId,
+                json_extract(body,'$.createdAt') AS createdAt, json_extract(body,'$.status') AS status,
+                json_extract(body,'$.ci') AS ci, json_extract(body,'$.snapshotId') AS snapshotId,
+                json_extract(body,'$.baseSnapshotId') AS baseSnapshotId
+                FROM records WHERE kind=? AND
+                (? IS NULL OR json_extract(body,'$.snapshotId')=? OR json_extract(body,'$.baseSnapshotId')=?)
+                ORDER BY createdAt DESC,rowid DESC""", (self.kind("run"), snapshot_id, snapshot_id, snapshot_id))
+            return [dict(row) for row in rows]
 
     def write_workflow(self, row, expected, require_revision):
         key = row["id"]

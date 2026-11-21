@@ -7,6 +7,7 @@ from .analysis.types import Finding
 from .connections import connections, save_connection
 from .engine import SCAN_TYPES
 from .findings import finding_history, findings_overview, review_finding
+from .snapshots import compare_snapshots, rename_snapshot, require_snapshot, save_version, snapshot_library, snapshot_run_index
 from .template_yaml import export_template, portable_graph
 from .contract import ApiError, SEVERITIES, to_internal, to_run, to_workflow
 
@@ -108,7 +109,7 @@ class WordApi:
             raise ApiError(409, "STALE_PREVIEW", "Создайте новый предпросмотр правки.")
         fixed = apply_training_patch(snapshot, Finding(**saved["finding"]), "fix-" + key)
         row = self.store.get("snapshot", snapshot.id)
-        self.store.put("snapshot", fixed.id, {**row, "id": fixed.id, "label": "Учебный снимок после правки", "files": fixed.files})
+        save_version(self.store, fixed, "Учебный снимок после правки", organizer_catalog=row.get("organizerCatalog"))
         return 201, {"snapshotId": fixed.id}
 
     def fixable_findings(self, row):
@@ -127,7 +128,22 @@ class WordApi:
 
     def get(self, path, query, handler):
         pieces = path.strip("/").split("/")
-        if path == "/workflows":
+        if path == "/snapshots/library":
+            handler.reply(200, snapshot_library(self.store))
+        elif len(pieces) == 3 and pieces[0] == "snapshots":
+            if pieces[2] == "runs":
+                require_snapshot(self.store, pieces[1])
+                handler.reply(200, snapshot_run_index(self.store.snapshot_run_rows(pieces[1]))[pieces[1]])
+            elif pieces[2] == "comparison":
+                base_id = query.get("againstSnapshotId", [None])[0]
+                if not base_id or base_id == pieces[1]:
+                    raise ApiError(422, "INVALID_SNAPSHOT_COMPARISON", "Выберите два разных снимка для сравнения.")
+                current = require_snapshot(self.store, pieces[1])
+                base = require_snapshot(self.store, base_id)
+                handler.reply(200, compare_snapshots(base, current))
+            else:
+                return False
+        elif path == "/workflows":
             handler.reply(200, [to_workflow(row) for row in self.store.list("workflow")])
         elif path == "/connections":
             handler.reply(200, connections(self.store))
@@ -195,6 +211,8 @@ class WordApi:
         pieces = path.strip("/").split("/")
         if path == "/workflows":
             handler.reply(201, self.save(data))
+        elif len(pieces) == 3 and pieces[0] == "snapshots" and pieces[2] == "rename":
+            handler.reply(200, rename_snapshot(self.store, pieces[1], data.get("label")))
         elif path == "/connections":
             handler.reply(201, save_connection(self.store, data))
         elif len(pieces) == 5 and pieces[0] == "workflows" and pieces[2] == "findings" and pieces[4] == "review":

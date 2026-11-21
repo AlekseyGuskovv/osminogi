@@ -1,5 +1,7 @@
 import { http, HttpResponse } from 'msw'
+import type { SnapshotRef } from '../api'
 import type { FindingRecord, FindingReview, FindingsOverview } from '../findings/types'
+import type { SnapshotComparison, SnapshotLibraryItem, SnapshotRun } from '../snapshots/types'
 import type { Template } from '../templates/types'
 import { nodeTypes } from '../workflow'
 import type { Branch, ConnectionRef, Workflow, WorkflowDraft, WorkflowDraftResult } from '../workflow'
@@ -68,14 +70,24 @@ function channelConfigured(id: unknown): boolean {
 
 let nextTemplate = 1
 const snapshotStorageKey = 'cyber-garden.mock.snapshots.v2'
-let importedSnapshots: typeof snapshots = []
+const snapshotLabelsKey = 'cyber-garden.mock.snapshot-labels.v1'
+let importedSnapshots: SnapshotRef[] = []
+let snapshotLabels: Record<string, string> = {}
 try {
   const saved = globalThis.localStorage?.getItem(snapshotStorageKey)
-  if (saved) importedSnapshots = JSON.parse(saved) as typeof snapshots
+  if (saved) importedSnapshots = JSON.parse(saved) as SnapshotRef[]
+  const labels = globalThis.localStorage?.getItem(snapshotLabelsKey)
+  if (labels) snapshotLabels = JSON.parse(labels) as Record<string, string>
 } catch {
   // Use the built-in demo snapshots when storage is unavailable.
 }
-const allSnapshots = () => [...snapshots, ...importedSnapshots]
+const allSnapshots = (): SnapshotRef[] => [...snapshots, ...importedSnapshots].map(snapshot => ({
+  ...snapshot, label: snapshotLabels[snapshot.id] ?? snapshot.label,
+}))
+
+const demoDependencies: Readonly<Record<string, string>> = {
+  'main-1': '1.1.0', 'pr-1': '1.0.0', 'pr-2': '1.1.0', 'pr-3': '1.0.0',
+}
 
 let nextWorkflow = 2
 let nextRun = 4
@@ -245,6 +257,15 @@ function runResponse({ result, readyAt }: StoredRun): Run {
   }
 }
 
+function snapshotRuns(snapshotId: string): SnapshotRun[] {
+  return [...runs.values()].reverse().flatMap(stored => {
+    const run = runResponse(stored)
+    if (run.snapshotId !== snapshotId && run.baseSnapshotId !== snapshotId) return []
+    return [{ id: run.id, workflowId: run.workflowId, createdAt: stored.at, status: run.status,
+      ci: run.ci.status, role: run.snapshotId === snapshotId ? 'current' : 'base' }]
+  })
+}
+
 function completedFindingRuns(workflowId: string) {
   return [...runs.values()].reverse().filter(run => run.result.workflowId === workflowId &&
     Date.now() >= run.readyAt && (run.result.ci.status === 'passed' || run.result.ci.status === 'failed'))
@@ -287,6 +308,50 @@ function scenarioFor(request: Request): RunScenario | undefined {
 
 export const handlers = [
   http.get(api('/snapshots'), () => HttpResponse.json(allSnapshots())),
+  http.get(api('/snapshots/library'), () => {
+    const library: SnapshotLibraryItem[] = allSnapshots().reverse().map(snapshot => {
+      const history = snapshotRuns(snapshot.id)
+      return { ...snapshot, runCount: history.length, latestRun: history.find(run => run.role === 'current') ?? null }
+    })
+    return HttpResponse.json(library)
+  }),
+  http.get(api('/snapshots/:id/runs'), ({ params }) => {
+    const id = String(params.id)
+    if (!allSnapshots().some(snapshot => snapshot.id === id)) return notFound('Снимок не найден.')
+    return HttpResponse.json(snapshotRuns(id))
+  }),
+  http.get(api('/snapshots/:id/comparison'), ({ params, request }) => {
+    const id = String(params.id)
+    const baseId = new URL(request.url).searchParams.get('againstSnapshotId')
+    if (!baseId || id === baseId) return error(422, 'INVALID_SNAPSHOT_COMPARISON', 'Выберите два разных снимка.')
+    if (![id, baseId].every(key => allSnapshots().some(snapshot => snapshot.id === key))) return notFound('Снимок не найден.')
+    const before = demoDependencies[baseId]
+    const after = demoDependencies[id]
+    if (!before || !after) return error(422, 'DEMO_COMPARISON_UNAVAILABLE', 'Для сравнения загруженных архивов подключите бэкенд.')
+    const comparison: SnapshotComparison = {
+      baseSnapshotId: baseId, snapshotId: id,
+      files: { added: [], modified: before === after ? [] : ['build.gradle.kts'], removed: [] },
+      dependencies: before === after ? [] : [{ module: '.', group: 'demo', artifact: 'sample-library', before: [before], after: [after] }],
+      unresolvedBefore: 0, unresolvedAfter: 0,
+    }
+    return HttpResponse.json(comparison)
+  }),
+  http.post(api('/snapshots/:id/rename'), async ({ params, request }) => {
+    const id = String(params.id)
+    const snapshot = allSnapshots().find(item => item.id === id)
+    if (!snapshot) return notFound('Снимок не найден.')
+    const label = (await readBody(request))?.label
+    if (typeof label !== 'string' || !label.trim() || label.trim().length > 160) {
+      return error(422, 'INVALID_SNAPSHOT_LABEL', 'Укажите имя снимка длиной от 1 до 160 символов.')
+    }
+    snapshotLabels[id] = label.trim()
+    try {
+      globalThis.localStorage?.setItem(snapshotLabelsKey, JSON.stringify(snapshotLabels))
+    } catch {
+      // The new label is available for this page.
+    }
+    return HttpResponse.json({ ...snapshot, label: snapshotLabels[id] })
+  }),
   http.post(api('/snapshots/import'), async ({ request }) => {
     const form = await request.formData().catch(() => undefined)
     const file = form?.get('file')
@@ -296,7 +361,7 @@ export const handlers = [
       return error(413, issue, 'Лимит ZIP — 20 МБ, до 100 МБ после распаковки и до 5000 файлов.')
     }
     if (issue) return error(422, issue, 'ZIP-архив пуст, повреждён или содержит недопустимые файлы.')
-    const snapshot = { id: `upload-${crypto.randomUUID()}`, label: file.name.slice(0, -4) }
+    const snapshot = { id: `upload-${crypto.randomUUID()}`, label: file.name.slice(0, -4), createdAt: new Date().toISOString() }
     importedSnapshots.push(snapshot)
     try {
       globalThis.localStorage?.setItem(snapshotStorageKey, JSON.stringify(importedSnapshots))

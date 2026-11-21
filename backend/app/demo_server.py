@@ -26,6 +26,7 @@ from .node_templates import generate_node_template, save_node_template
 from .project_import import (
     ArchiveTooLarge, MAX_UPLOAD, ORGANIZER_COMMIT, ORGANIZER_REPOSITORY, read_organizer_project, read_project,
 )
+from .snapshots import save_version, snapshot_ref
 from .store import Store
 from .template_yaml import MAX_TEMPLATE_BYTES, YAML_MEDIA_TYPES, import_template, portable_graph
 
@@ -34,7 +35,7 @@ ROOT = Path(__file__).resolve().parents[2]
 EXTERNAL_CI = ROOT / "examples/external-ci"
 PROVIDER = build_provider()
 RUNS = {}
-STORE = None
+STORE: Store
 WORD_API = None
 CATALOG: CatalogService
 
@@ -44,21 +45,6 @@ def project(snapshot_id):
     if row is None:
         raise ApiError(422, "SNAPSHOT_REQUIRED", "Выберите загруженный учебный проект.")
     return Snapshot(row["id"], row["files"])
-
-
-def save_snapshot(snapshot, label, *, organizer_catalog=None):
-    row = {"id": snapshot.id, "label": label, "files": snapshot.files}
-    if organizer_catalog is not None:
-        row["organizerCatalog"] = organizer_catalog
-    STORE.put("snapshot", snapshot.id, row)
-    return snapshot_ref(row)
-
-
-def snapshot_ref(row):
-    public = {"id": row["id"], "label": row["label"]}
-    if "organizerCatalog" in row:
-        public["catalogSource"] = "organizer"
-    return public
 
 
 def snapshot_catalog(snapshot_id):
@@ -79,7 +65,7 @@ def import_organizer_snapshot(url):
         parse_catalog(catalog, "organizer")
     except (URLError, OSError) as error:
         raise ApiError(502, "REPOSITORY_UNAVAILABLE", "GitHub не отдал архив. Повторите позже или загрузите ZIP.") from error
-    return save_snapshot(snapshot, "TBagirov/training · проект организаторов", organizer_catalog=catalog)
+    return save_version(STORE, snapshot, "TBagirov/training · проект организаторов", organizer_catalog=catalog)
 
 
 def training_run(variant):
@@ -99,7 +85,7 @@ def training_run(variant):
         snapshot = read_project(training_archive(key), key)
         digest = sha256(json.dumps(snapshot.files, sort_keys=True).encode()).hexdigest()[:16]
         stored = Snapshot(f"training-{key}-{digest}", snapshot.files)
-        snapshots[key] = save_snapshot(stored, name)["id"]
+        snapshots[key] = save_version(STORE, stored, name)["id"]
     workflow_id = "training-replay"
     if STORE.get("workflow", workflow_id) is None:
         save_workflow({"name": "Учебная проверка Kotlin", "graph": graph, "snapshotId": snapshots["before"]}, workflow_id)
@@ -283,11 +269,12 @@ class Handler(BaseHTTPRequestHandler):
             return
         if (not demo or path == "/connections") and WORD_API.get(path, query, self):
             return
-        collections = {"/runs": "run", "/workflows": "workflow", "/templates": "template", "/snapshots": "snapshot"}
+        if path == "/snapshots":
+            self.reply(200, STORE.snapshot_refs())
+            return
+        collections = {"/runs": "run", "/workflows": "workflow", "/templates": "template"}
         if path in collections:
             rows = STORE.list(collections[path], 30 if path == "/runs" else -1)
-            if path == "/snapshots":
-                rows = [snapshot_ref(row) for row in rows]
             self.reply(200, rows)
             return
         if path.startswith("/runs/"):
@@ -365,7 +352,7 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(raw, bytes):
             raise ValueError("Не удалось прочитать ZIP.")
         snapshot = read_project(raw, uuid4().hex)
-        self.reply(201, save_snapshot(snapshot, label[:160]))
+        self.reply(201, save_version(STORE, snapshot, label[:160]))
 
     def do_POST(self):
         try:

@@ -1,12 +1,13 @@
 import { runsUrl } from '../runs/navigation'
 import { Icon } from './Icon'
 
-export function WorkspaceNav({ workflowId, section }: { workflowId?: string; section: 'editor' | 'runs' | 'findings' | 'templates' }) {
+export function WorkspaceNav({ workflowId, section }: { workflowId?: string; section: 'editor' | 'runs' | 'findings' | 'snapshots' | 'templates' }) {
   const id = workflowId ?? 'new'
   const links = [
     { key: 'editor', label: 'Конструктор', icon: 'graph', href: `?workflow=${encodeURIComponent(id)}` },
     { key: 'runs', label: 'Запуски', icon: 'runs', href: runsUrl(id) },
     { key: 'findings', label: 'Находки', icon: 'findings', href: `?view=findings&workflow=${encodeURIComponent(id)}` },
+    { key: 'snapshots', label: 'Снимки', icon: 'snapshots', href: `?view=snapshots&workflow=${encodeURIComponent(id)}` },
     { key: 'templates', label: 'Шаблоны', icon: 'templates', href: `?view=templates&workflow=${encodeURIComponent(id)}` },
   ] as const
 
