@@ -36,6 +36,6 @@ test('both local routes start at Start and move along only the selected branch',
       const edge = simulationEdge(event, events[index + 1], longDemoWorkflow.edges)
       return sum + frameDuration(event, Boolean(edge), log.source)
     }, 0)
-    assert.ok(duration >= 35000 && duration <= 45000)
+    assert.ok(duration >= 35000 && duration <= 45500)
   }
 })

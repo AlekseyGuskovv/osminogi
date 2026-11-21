@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { advanceTime, emptyReplay, frameDuration, frameProgress, historyLimit, activationDuration, recordEvent } from '../src/security-replay/playback.ts'
+import { advancePhase, advanceTime, emptyReplay, frameDuration, frameProgress, historyLimit, activationDuration, recordEvent } from '../src/security-replay/playback.ts'
 
 const node = (seq, status = 'running', runId = 'run-1') => ({
   runId, seq, at: '', type: 'node.status', data: { nodeId: 'analyzer', status },
@@ -18,8 +18,8 @@ test('virtual time retains its position across speed changes, pause and resume',
 
 test('travel, arrival and tail share the same visual timeline', () => {
   assert.equal(frameDuration(node(1, 'succeeded'), true), 2050)
-  assert.equal(frameProgress(550, true).travel, 0)
-  assert.equal(frameProgress(1175, true).travel, 0.5)
+  assert.equal(frameProgress(400, true).travel, 0)
+  assert.equal(frameProgress(1100, true).travel, 0.5)
   assert.equal(frameProgress(1800, true).arrival, 1)
   assert.equal(frameProgress(2050, true).trail, 0)
   assert.equal(frameProgress(1175, false).trail, 0)
@@ -41,4 +41,13 @@ test('a running frame allows the node activation without changing edge timing', 
   assert.equal(activationDuration, 1800)
   assert.equal(frameDuration(node(2, 'succeeded'), true), 2050)
   assert.equal(frameDuration(node(3, 'skipped'), false), 0)
+})
+
+test('delayed frames cannot borrow visual time from the next step', () => {
+  assert.equal(advancePhase(1400, 1800, 8000, 2, false), 1800)
+  assert.equal(advancePhase(350, 1800, 4000, 2, true), 350)
+  assert.equal(advancePhase(350, 1800, 100, 0.5, false), 400)
+  assert.equal(frameProgress(399, true).trail, 0)
+  assert.ok(frameProgress(400, true).trail > 0)
+  assert.equal(frameProgress(1800, true).travel, 1)
 })

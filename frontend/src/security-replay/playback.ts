@@ -11,7 +11,7 @@ export type PlaybackSpeed = typeof speeds[number]
 export const activationDuration = 1800
 export const historyLimit = 160
 
-export type ReplayLog = { base: RunView; events: readonly RunEvent[]; offset: number; source?: 'simulation' }
+export type ReplayLog = { base: RunView; events: readonly RunEvent[]; offset: number; source?: 'simulation' | 'reconstruction'; reconstructed?: ReadonlySet<string> }
 
 export function emptyReplay(id: string): ReplayLog {
   return { base: { id, status: 'queued', nodes: {} }, events: [], offset: 0 }
@@ -35,15 +35,15 @@ export function frameDuration(event: RunEvent, travels: boolean, source?: Replay
   if (event.type !== 'node.status' || event.data.status === 'skipped' || event.data.status === 'queued') return 0
   if (travels) return 2050
   if (event.data.status === 'running') return activationDuration
-  if (source === 'simulation' && event.data.status === 'succeeded') return 200
+  if (source && event.data.status === 'succeeded') return 400
   return 900
 }
 
 export function frameProgress(elapsed: number, travels: boolean) {
-  const travel = Math.max(0, Math.min(1, (elapsed - 550) / 1250))
+  const travel = Math.max(0, Math.min(1, (elapsed - 400) / 1400))
   return {
     travel,
-    trail: travels && elapsed >= 550 ? Math.min(1, (elapsed - 550) / 110, Math.max(0, (2050 - elapsed) / 250)) : 0,
+    trail: travels && elapsed >= 400 ? Math.min(1, .45 + (elapsed - 400) / 110, Math.max(0, (2050 - elapsed) / 250)) : 0,
     arrival: travels ? Math.max(0, 1 - Math.abs(elapsed - 1800) / 250) : 0,
   }
 }
@@ -65,4 +65,9 @@ export function simulationEdge(event: RunEvent, next: RunEvent | undefined, edge
   const source = event.data.nodeId
   const target = next.data.nodeId
   return edges.find(edge => edge.from === source && edge.to === target && edge.branch === branch)
+}
+
+// A delayed browser frame may finish the current phase, but cannot consume the next one.
+export function advancePhase(elapsed: number, duration: number, delta: number, speed: PlaybackSpeed, paused: boolean) {
+  return Math.min(duration, advanceTime(elapsed, delta, speed, paused))
 }

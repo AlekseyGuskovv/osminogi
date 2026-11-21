@@ -5,7 +5,7 @@ type RunEvent =
   | { type: 'run.status'; data: { status: 'running' } }
   | {
       type: 'node.status'
-      data: { nodeId: string; status: 'running' | 'succeeded' | 'failed'; output?: { findingIds: string[]; branch?: 'yes' | 'no' }; error?: { code: string; message: string } }
+      data: { nodeId: string; status: 'running' | 'succeeded' | 'failed' | 'skipped'; output?: { findingIds: string[]; branch?: 'yes' | 'no' }; error?: { code: string; message: string } }
     }
   | { type: 'run.finished'; data: { status: Run['status']; ciStatus: Run['ci']['status'] } }
 
@@ -29,6 +29,7 @@ export function runEvents(run: Run, at: string, readyAt: number, lastEventId: st
   }
   const gate = run.steps.find(step => step.branch !== undefined)
   if (gate) {
+    events.push({ type: 'node.status', data: { nodeId: gate.nodeId, status: 'running' } })
     events.push({
       type: 'node.status',
       data: {
@@ -37,6 +38,15 @@ export function runEvents(run: Run, at: string, readyAt: number, lastEventId: st
         output: { branch: gate.branch, findingIds: run.findings.map(finding => finding.id) },
       },
     })
+  }
+  for (const step of run.steps) {
+    if (step === node || step === gate) continue
+    if (step.status === 'succeeded' || step.status === 'failed') {
+      events.push({ type: 'node.status', data: { nodeId: step.nodeId, status: 'running' } })
+    }
+    if (step.status === 'succeeded' || step.status === 'failed' || step.status === 'skipped') {
+      events.push({ type: 'node.status', data: { nodeId: step.nodeId, status: step.status, error: step.error } })
+    }
   }
   events.push({ type: 'run.finished', data: { status: run.status, ciStatus: run.ci.status } })
 

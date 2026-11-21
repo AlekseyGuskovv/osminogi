@@ -96,8 +96,8 @@
 }
 .hologram-motion i {
   position: absolute;
-  width: 15px;
-  height: 10px;
+  width: 19px;
+  height: 13px;
   border: solid var(--holo-edge);
   border-width: 1px 0 0 1px;
   border-top-left-radius: 4px;
@@ -111,15 +111,16 @@
   animation-timing-function: ease-out;
 }
 @keyframes hologram-assemble {
-  0% { opacity: 0; transform: scale(1.07, 1.15); }
-  8% { opacity: .75; }
+  0% { opacity: 0; transform: scale(1.15, 1.36); }
+  7% { opacity: .9; }
   20% { opacity: 1; transform: scale(1); }
-  60% { opacity: .81; }
+  60% { opacity: .86; }
   100% { opacity: 1; transform: scale(1); }
 }
 @keyframes hologram-release {
-  from { opacity: .9; transform: scale(1); }
-  to { opacity: 0; transform: scale(.98, .92); }
+  from { opacity: 1; transform: scale(1); }
+  25% { opacity: 1; transform: scale(1.025, 1.05); }
+  to { opacity: 0; transform: scale(.99, .94); }
 }
 .garden-node[data-arrival]::before {
   content: '';
@@ -143,8 +144,8 @@
 .replay-edge-pulse { pointer-events: none; fill: none; color: var(--accent); }
 .pulse-edge-guide { stroke: currentColor; opacity: .32; stroke-width: 3; }
 .pulse-edge-tail, .pulse-edge-core { stroke-linecap: round; opacity: var(--pulse-trail, 0); }
-.pulse-edge-tail { stroke: color-mix(in srgb, currentColor 48%, transparent); stroke-width: 5; stroke-dasharray: 8 110; stroke-dashoffset: var(--pulse-offset, 8); }
-.pulse-edge-core { stroke: color-mix(in srgb, currentColor 42%, white); stroke-width: 3; stroke-dasharray: 1 117; stroke-dashoffset: calc(var(--pulse-offset, 8) - 8); }
+.pulse-edge-tail { stroke: color-mix(in srgb, currentColor 48%, transparent); stroke-width: 5.5; stroke-dasharray: 12 110; stroke-dashoffset: calc(var(--pulse-offset, 0) + 12); }
+.pulse-edge-core { stroke: color-mix(in srgb, currentColor 42%, white); stroke-width: 4; stroke-dasharray: 1 117; stroke-dashoffset: var(--pulse-offset, 0); }
 
 @media (prefers-reduced-motion: reduce) {
   .hologram-motion { inset: 0; border-color: color-mix(in srgb, var(--tone) 56%, transparent); }
@@ -160,3 +161,13 @@
 .long-demo-progress p { margin-block: 8px 0; }
 .long-demo .pulse-ci-result[data-ci-status] { color: var(--accent); }
 .long-demo .pulse-ci-result[data-ci-status='failed'] { color: var(--danger); }
+
+.hologram-motion::after {
+  content: '';
+  position: absolute;
+  top: -1px;
+  inset-inline: 19% 38%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--holo-edge), transparent);
+}
+.replay-presentation .replay-demo + .replay-demo { margin-inline-start: 6px; }

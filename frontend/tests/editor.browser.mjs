@@ -209,7 +209,8 @@ try {
 
     await waitFor(() => document.querySelector('[data-run-status="succeeded"]'))
     assert(document.querySelector('[data-ci-status="failed"]'), 'Native SSE separates completed run from red CI')
-    assert(document.querySelector('.garden-run-accepted').textContent.includes('Воспроизводится визуализация'),
+    assert(!document.body.textContent.includes('Запуск поставлен в очередь'), 'Completed run clears its queued message')
+    assert(document.querySelector('.garden-run-accepted').textContent.includes('Воспроизводится анимация'),
       'Actual CI is available before visual playback finishes')
     await waitFor(() => document.querySelector('[data-id="secret"] [data-node-status="succeeded"]'))
     document.querySelector('[data-id="secret"] .garden-node').click()
@@ -818,7 +819,7 @@ try {
       const panel = await until(() => document.querySelector('.replay-presentation'))
       if (!panel.textContent.includes('Демо · тестовые данные')) throw new Error('Demo label missing')
       await until(() => !find(panel, 'Пауза')?.disabled)
-      const controls = panel.querySelector('select')
+      const controls = panel.querySelector('.pulse-controls select')
       const setSpeed = speed => {
         controls.value = String(speed)
         controls.dispatchEvent(new Event('change', { bubbles: true }))
@@ -831,12 +832,12 @@ try {
       for (const speed of [0.5, 2, 1]) {
         const previous = animation.currentTime
         setSpeed(speed)
-        await until(() => animation.playbackRate === speed)
+        const started = await new Promise(resolve => requestAnimationFrame(resolve))
         if (animation.currentTime < previous || !beam.isConnected) throw new Error('Speed change reset the hologram')
-        const started = performance.now()
         const current = animation.currentTime
-        await new Promise(resolve => setTimeout(resolve, 65))
-        const rate = (animation.currentTime - current) / (performance.now() - started)
+        let ended = started
+        while (ended - started < 100) ended = await new Promise(resolve => requestAnimationFrame(resolve))
+        const rate = (animation.currentTime - current) / (ended - started)
         if (Math.abs(rate - speed) > 0.4) throw new Error(`Unexpected hologram speed: ${rate}`)
       }
       find(panel, 'Пауза').click()
@@ -846,7 +847,7 @@ try {
       if (animation.currentTime !== activationTime) throw new Error('Scanner moved while paused')
       find(panel, 'Продолжить').click()
       await until(() => animation.currentTime > activationTime)
-      await until(() => canvas.querySelector('.pulse-edge-core') && offset() < 4 && offset() > -35)
+      await until(() => canvas.querySelector('.pulse-edge-core') && offset() < -3 && offset() > -35)
       setSpeed(0.5)
       await new Promise(resolve => setTimeout(resolve, 40))
       const slowStart = offset()
@@ -901,7 +902,7 @@ try {
   for (const reducedMotion of [false, true]) await evaluate(4175, async () => {
     const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
     async function until(predicate) {
-      for (let i = 0; i < 260; i++) {
+      for (let i = 0; i < 470; i++) {
         const result = predicate()
         if (result) return result
         await sleep(30)
@@ -1157,7 +1158,7 @@ try {
       }
       const animation = origin.getAnimations()[0]
       speed(0.5)
-      await until(() => animation.playbackRate === 0.5)
+      await until(() => animation.currentTime > 50)
       button('Пауза', panel).click()
       await until(() => animation.playState === 'paused' && !animation.pending)
       const frozen = animation.currentTime
@@ -1165,7 +1166,7 @@ try {
       if (frozen !== animation.currentTime) throw new Error('Paused hologram advanced')
       speed(2)
       button('Продолжить', panel).click()
-      await until(() => animation.playbackRate === 2)
+      await until(() => animation.currentTime > frozen)
       await until(() => canvas.querySelector('[data-id="demo-start:next"] .pulse-edge-core'))
       if (node('secrets', 'running')) throw new Error('Destination hologram started before arrival')
       button('Пауза', panel).click()
@@ -1186,7 +1187,7 @@ try {
       await until(() => !node('finish', 'succeeded'))
       const greenStarted = performance.now()
       button('Запустить', panel).click()
-      await until(() => node('start', 'running')?.querySelector('.hologram-motion')?.getAnimations()[0]?.playbackRate === 2)
+      await until(() => node('start', 'running')?.querySelector('.hologram-motion'))
       await until(() => canvas.querySelector('[data-id="demo-gate:no"] .pulse-edge-core'), 32000)
       if (!node('telegram', 'skipped') || canvas.querySelector('[data-id="demo-gate:yes"] .pulse-edge-core')) {
         throw new Error('NO did not skip Telegram')

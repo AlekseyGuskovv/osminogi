@@ -15,9 +15,10 @@ const titles = [
   'Проверка пройдена',
 ]
 
-export function PresentationMode({ stage, setStage, onClose, run, error, playback, speed, onSpeed, activeLabel, onFocus, onCompare, onLongDemo }: {
+export function PresentationMode({ stage, setStage, onClose, run, error, playback, speed, onSpeed, activeLabel, onFocus, onCompare, onLongDemo, replayId, onReplayId }: {
   stage: number; setStage: (stage: number) => void; onClose: () => void
   run?: Run; error: string; playback: Playback; speed: PlaybackSpeed; onSpeed: (speed: PlaybackSpeed) => void; activeLabel?: string
+  replayId: string; onReplayId: (id: string) => void
   onLongDemo: () => void; onFocus: (id: string) => void; onCompare: (run: Run | undefined) => void
 }) {
   useEffect(() => {
@@ -48,9 +49,19 @@ export function PresentationMode({ stage, setStage, onClose, run, error, playbac
       <button disabled={stage === 3} onClick={() => setStage(stage + 1)}>Далее</button>
     </div>
     <button type="button" onClick={onLongDemo}>Запустить длинное демо</button>
-    {stage === 0 && <PlaybackControls playback={playback} speed={speed} onSpeed={onSpeed} />}
+    {stage === 0 && <>
+      <p className="replay-demo">Демо · реконструкция маршрута</p>
+      <p>Блоки с пометкой «Маршрут · демо» показывают структуру графа. Их выполнение не подтверждено.</p>
+      <label>Запуск для реконструкции
+        <select value={replayId} onChange={event => onReplayId(event.target.value)}>
+          <option value="run-1">run-1 · Критическая находка</option>
+          <option value="run-2">run-2 · После исправления</option>
+        </select>
+      </label>
+      <PlaybackControls playback={playback} speed={speed} onSpeed={onSpeed} />
+    </>}
     {run && stage === 0 && <div>
-      <p>Запись событий {run.id}</p>
+      <p>Фактический итог {run.id}</p>
       <div className="replay-controls"><StatusBadge kind="run" status={run.status} />
         <StatusBadge kind="ci" status={run.ci.status} /></div>
       {activeLabel && <p>На графе · <strong>{activeLabel}</strong></p>}

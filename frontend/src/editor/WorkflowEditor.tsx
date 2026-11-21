@@ -27,6 +27,8 @@ import type { DemoScenario } from '../security-replay/longDemo'
 import { PresentationMode } from '../security-replay/PresentationMode'
 import { usePresentation } from '../security-replay/usePresentation'
 import { branchChoice, branchOf } from '../security-replay/state'
+import { reconstructRoute } from '../security-replay/reconstruction'
+import type { Playback } from '../security-replay/usePlayback'
 import { HolographicActivation } from '../security-replay/HolographicActivation'
 import { PlaybackControls } from '../security-replay/PlaybackControls'
 import { usePlayback } from '../security-replay/usePlayback'
@@ -80,19 +82,19 @@ function fittedViewport(workflow: EditableWorkflow, width: number, height: numbe
 }
 
 const statuses = { queued: 'В очереди', running: 'Выполняется', succeeded: 'Готово', failed: 'Ошибка', skipped: 'Пропущен' }
-type Block = Node<{ kind: NodeType; detail?: string; status?: keyof typeof statuses; activation?: { phase: 'running' | 'succeeded'; speed: PlaybackSpeed; paused: boolean; key: string }; arrival?: boolean; branch?: 'yes' | 'no'; critical?: boolean; highlighted?: boolean; ciPassed?: boolean; muted?: boolean }, 'workflow'>
+type Block = Node<{ kind: NodeType; detail?: string; status?: keyof typeof statuses; reconstructed?: boolean; activation?: { phase: 'running' | 'succeeded'; bindMotion: Playback['bindMotion']; key: string }; arrival?: boolean; branch?: 'yes' | 'no'; critical?: boolean; highlighted?: boolean; ciPassed?: boolean; muted?: boolean }, 'workflow'>
 export type EditorProps = { workflowId?: string; ciRunId?: string; copiedTemplate?: boolean; explain?: boolean }
 
-const WorkflowBlock = memo(function WorkflowBlock({ data, selected }: NodeProps<Block>) {
+const WorkflowBlock = memo(function WorkflowBlock({ id, data, selected }: NodeProps<Block>) {
   const { kind } = data
   const [label, description, tone] = labels[kind]
   return (
-    <div className={`garden-node ${selected ? 'selected' : ''}`} data-node-tone={tone} data-execution={data.status} data-arrival={data.arrival || undefined} data-critical={data.critical || undefined} data-branch={data.branch} data-ci-passed={data.ciPassed || undefined} data-explain-muted={data.muted || undefined} data-ci-highlight={data.highlighted || undefined}>
-      {data.activation && <HolographicActivation key={data.activation.key} phase={data.activation.phase} speed={data.activation.speed} paused={data.activation.paused} />}
+    <div className={`garden-node ${selected ? 'selected' : ''}`} data-node-tone={tone} data-execution={data.reconstructed ? undefined : data.status} data-arrival={data.arrival || undefined} data-critical={data.critical || undefined} data-branch={data.branch} data-ci-passed={data.ciPassed || undefined} data-explain-muted={data.muted || undefined} data-ci-highlight={data.highlighted || undefined}>
+      {data.activation && <HolographicActivation key={data.activation.key} id={id} phase={data.activation.phase} bindMotion={data.activation.bindMotion} />}
       {kind !== 'start' && <Handle type="target" position={Position.Left} aria-label="Вход" />}
       <span className="garden-icon"><Icon name={kind} size={17} /></span>
       <span className="garden-node-copy"><strong>{label}</strong><span>{data.detail ?? description}</span>
-        {data.status && <small data-node-status={data.status}>{statuses[data.status]}{data.branch && ` · ${data.branch.toUpperCase()}`}</small>}
+        {data.status && <small data-node-status={data.reconstructed ? undefined : data.status}>{data.reconstructed ? 'Маршрут · демо' : statuses[data.status]}{data.branch && ` · ${data.branch.toUpperCase()}`}</small>}
       </span>
       {kind === 'condition' ? <>
         <span className="garden-port yes" aria-hidden="true">YES</span>
@@ -207,7 +209,10 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
   const [demoStage, setDemoStage] = useState(0)
   const [demoCompareRun, setDemoCompareRun] = useState<Run>()
   const savedCamera = useRef<Viewport | undefined>(undefined)
-  const demo = usePresentation(demoOpen && !longDemo, demoStage, workflow?.id)
+  const [replayId, setReplayId] = useState('run-1')
+  const demo = usePresentation(demoOpen && !longDemo, demoStage, workflow?.id, replayId)
+  const reconstructed = useMemo(() => demoStage === 0 && workflow && demo.run
+    ? reconstructRoute(workflow, demo.run) : undefined, [demoStage, workflow, demo.run])
   const [snapshots, setSnapshots] = useState<SnapshotRef[]>([])
   const [draftWarnings, setDraftWarnings] = useState<string[]>([])
   const [snapshotId, setSnapshotId] = useState('')
@@ -219,7 +224,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
   const pending = saving || starting
   const { view: runView, log: liveLog } = useRecordedRun(accepted?.id)
   const [speed, setSpeed] = useState<PlaybackSpeed>(1)
-  const playbackLog = longDemo ? longStarted ? longDemoLogs[scenario] : undefined : demoOpen ? demo.log : liveLog
+  const playbackLog = longDemo ? longStarted ? longDemoLogs[scenario] : undefined : demoOpen ? reconstructed : liveLog
   const playback = usePlayback(playbackLog, displayedWorkflow?.edges ?? noEdges, speed, canvas, demoOpen)
   const runStatus = runView?.status ?? accepted?.status
   const visualFinished = playback.event?.type === 'run.finished' && !playback.playing
@@ -227,8 +232,8 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
   const playbackView = playback.view
   const activationRunId = playbackView?.status === 'succeeded' || playbackView?.status === 'failed' ? undefined : playbackView?.id
   const activation = useMemo(() => activationRunId ? {
-    speed: playback.speed, paused: playback.paused, key: `${activationRunId}:${playback.repetition}`,
-  } : undefined, [activationRunId, playback.speed, playback.paused, playback.repetition])
+    bindMotion: playback.bindMotion, key: `${activationRunId}:${playback.repetition}`,
+  } : undefined, [activationRunId, playback.bindMotion, playback.repetition])
   const activeEvent = playback.event?.type === 'node.status' ? playback.event : undefined
   const pulseNode = activeEvent && (playback.playing || activeEvent.data.status === 'running') ? activeEvent.data.nodeId : undefined
   const factCi = demoOpen ? demo.run?.ci : runView?.ci
@@ -505,8 +510,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
         setNotice({ text: `Сохранено · ревизия ${saved.revision}` })
       } else if (workflow.id) {
         playback.restart()
-        const run = await start(workflow.id, { trigger: 'manual', snapshotId })
-        if (run) setNotice({ text: `${run.id} поставлен в очередь` })
+        await start(workflow.id, { trigger: 'manual', snapshotId })
       }
     } catch (error) {
       setNotice({ text: error instanceof Error ? error.message : 'Не удалось выполнить запрос.', error: true })
@@ -518,7 +522,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
   const completedNode = playback.completedNode
   const nodes = useMemo<Block[]>(() => (displayedWorkflow?.nodes ?? []).map(node => ({
     id: node.id, type: 'workflow', zIndex: 2, position: { x: node.x, y: node.y },
-    data: { kind: node.type, detail: longDemo ? demoDetails.get(node.id) : node.type === 'condition' ? conditionLabel(node.settings) : undefined, status: visualRun?.nodes[node.id]?.status,
+    data: { reconstructed: reconstructed?.reconstructed?.has(node.id), kind: node.type, detail: longDemo ? demoDetails.get(node.id) : node.type === 'condition' ? conditionLabel(node.settings) : undefined, status: visualRun?.nodes[node.id]?.status,
       activation: activation && playbackView?.nodes[node.id]?.status === 'running'
         ? { ...activation, phase: 'running' } : activation && node.id === completedNode
           ? { ...activation, phase: 'succeeded' } : undefined,
@@ -528,7 +532,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
       highlighted: highlight?.nodeIds.includes(node.id),
       ciPassed: highlightRun?.ci.status === 'passed',
       muted: Boolean(explanationRun && highlight?.nodeIds.length && !highlight.nodeIds.includes(node.id)) }, selected: node.id === selectedId,
-  })), [displayedWorkflow?.nodes, longDemo, visualRun, highlight, selectedId, explanationRun, highlightRun, pulseNode, playbackView, activation, completedNode, playback.edge, criticalNode, criticalFinding])
+  })), [displayedWorkflow?.nodes, longDemo, reconstructed, visualRun, highlight, selectedId, explanationRun, highlightRun, pulseNode, playbackView, activation, completedNode, playback.edge, criticalNode, criticalFinding])
   const edges = useMemo(() => (displayedWorkflow?.edges ?? []).map(edge => {
     const highlighted = highlight?.edge?.from === edge.from && highlight.edge.branch === edge.branch
     const id = `${edge.from}:${edge.branch}`
@@ -606,12 +610,12 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
       </p>}
       {notice && <p className={`garden-notice ${notice.error ? 'error' : ''}`} role={notice.error ? 'alert' : 'status'}>{notice.text}</p>}
       {accepted && workflow?.id && <section className="garden-run-accepted" aria-label="Текущий запуск">
-        <a href={runsUrl(workflow.id, accepted.id)}>{accepted.id}</a> <span data-run-status={runStatus}>{{
-          queued: 'В очереди', running: 'Выполняется', succeeded: 'Проверка завершена', failed: 'Проверка завершилась ошибкой',
+        <a href={runsUrl(workflow.id, accepted.id)}>{accepted.id}</a> <span role="status" data-run-status={runStatus}>{{
+          queued: 'Запуск поставлен в очередь', running: 'Проверка выполняется', succeeded: 'Проверка завершена', failed: 'Проверка завершилась ошибкой',
         }[runStatus ?? 'queued']}</span>
         {runView?.ciStatus && <span className={visualFinished ? 'pulse-ci-result' : undefined} data-ci-status={runView.ciStatus}>CI {runView.ciStatus.toUpperCase()}</span>}
-        {playback.playing && (runStatus === 'succeeded' || runStatus === 'failed') && <small>
-          {playback.paused ? 'Визуализация на паузе' : 'Воспроизводится визуализация'}
+        {(playback.playing || visualFinished) && <small data-visual-status={visualFinished ? 'finished' : playback.paused ? 'paused' : 'playing'}>
+          {visualFinished ? 'Визуализация завершена' : playback.paused ? 'Визуализация на паузе' : 'Воспроизводится анимация'}
         </small>}
         {criticalFinding && <a href={runsUrl(workflow.id, accepted.id)}>Находка {criticalFinding}</a>}
         <PlaybackControls playback={playback} speed={speed} onSpeed={setSpeed} />
@@ -629,7 +633,8 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
         setDemoCompareRun(undefined)
         if (stage === 0) playback.restart()
       }} onClose={closeDemo} run={demo.run} error={demo.error} playback={playback} speed={speed} onSpeed={setSpeed}
-        activeLabel={activeLabel} onFocus={focusEvidence}
+        activeLabel={activeLabel} onFocus={focusEvidence} replayId={replayId}
+        onReplayId={id => { setReplayId(id); playback.restart() }}
         onCompare={setDemoCompareRun} onLongDemo={enterLongDemo} />)}
       {displayedWorkflow && <div className="garden-workspace" data-inspector-collapsed={inspectorCollapsed} data-explain-open={!demoOpen && Boolean(explanationRun)}>
         <aside className="garden-panel garden-palette" aria-label="Палитра">
