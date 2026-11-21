@@ -65,6 +65,7 @@ const noEdges: EditableWorkflow['edges'] = []
 const severity = { critical: 'Критический', high: 'Высокий', medium: 'Средний', low: 'Низкий' }
 
 function conditionLabel(settings: Record<string, unknown>) {
+  if (Array.isArray(settings.rules)) return `${settings.rules.length} правил · ${settings.mode === 'any' ? 'ИЛИ' : 'И'}`
   if (settings.metric === 'findingCount') return `Находок ≥ ${String(settings.value ?? 1)}`
   if (settings.metric === 'findingTitle') return settings.value ? 'Совпадение по названию' : 'Шаблон не задан'
   const value = String(settings.value ?? 'critical')

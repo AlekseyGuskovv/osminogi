@@ -1,6 +1,8 @@
 from datetime import UTC, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from .conditions import match_rules
+
 
 NODE_TYPES = {"sca": "deps", "sast": "code", "condition": "gate"}
 TO_WORD = {value: key for key, value in NODE_TYPES.items()}
@@ -53,13 +55,17 @@ def to_internal(data):
         node.update({key: row[key] for key in ("name", "description") if key in row})
         node["type"] = NODE_TYPES.get(kind, kind)
         if kind == "condition":
-            metric, operator = METRICS.get(settings.get("metric"), ("", ""))
-            if not metric or settings.get("operator") != operator:
-                raise ValueError("Неизвестное условие ветвления.")
-            value = settings.get("value")
-            if metric == "severity":
-                value = -1 if value == "low" else SEVERITIES.index(value)
-            node.update(metric=metric, threshold=value)
+            if "rules" in settings:
+                match_rules(settings, [])
+                node["ruleSettings"] = settings
+            else:
+                metric, operator = METRICS.get(settings.get("metric"), ("", ""))
+                if not metric or settings.get("operator") != operator:
+                    raise ValueError("Неизвестное условие ветвления.")
+                value = settings.get("value")
+                if metric == "severity":
+                    value = -1 if value == "low" else SEVERITIES.index(value)
+                node.update(metric=metric, threshold=value)
         if kind == "telegram":
             channel = settings.get("channelId")
             if channel is not None and not isinstance(channel, str):
@@ -78,7 +84,9 @@ def to_word_graph(graph):
         item = {key: row[key] for key in ("id", "x", "y")}
         item.update({key: row[key] for key in ("name", "description") if key in row})
         settings = {}
-        if kind == "gate":
+        if kind == "gate" and "ruleSettings" in row:
+            settings = row["ruleSettings"]
+        elif kind == "gate":
             metric, operator = BACKEND_METRICS[row.get("metric", "severity")]
             threshold = row.get("threshold", 2)
             settings = {"metric": metric, "operator": operator,
