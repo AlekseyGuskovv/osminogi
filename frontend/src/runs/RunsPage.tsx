@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getJson } from '../api'
 import { ComparisonPage } from './ComparisonPage'
+import { FixDialog } from './FixDialog'
 import { FindingCard } from './FindingCard'
 import { ThresholdPreview } from './ThresholdPreview'
 import type { Run } from './types'
@@ -16,13 +17,24 @@ export function RunsPage({ workflowId, runId }: { workflowId: string; runId?: st
 
   useEffect(() => {
     let active = true
-    const query = runId
-      ? getJson<Run>(`/runs/${encodeURIComponent(runId)}`).then(result => { if (active) setRun(result) })
-      : getJson<Run[]>(`/workflows/${encodeURIComponent(workflowId)}/runs`).then(result => { if (active) setRuns(result) })
-    void query.catch((reason: unknown) => {
-      if (active) setError(reason instanceof Error ? reason.message : 'Не удалось загрузить запуски.')
-    })
-    return () => { active = false }
+    let poll: ReturnType<typeof setTimeout> | undefined
+    async function load() {
+      try {
+        if (runId) {
+          const result = await getJson<Run>(`/runs/${encodeURIComponent(runId)}`)
+          if (!active) return
+          setRun(result)
+          if (result.status === 'queued' || result.status === 'running') poll = setTimeout(() => void load(), 500)
+        } else {
+          const results = await getJson<Run[]>(`/workflows/${encodeURIComponent(workflowId)}/runs`)
+          if (active) setRuns(results)
+        }
+      } catch (reason) {
+        if (active) setError(reason instanceof Error ? reason.message : 'Не удалось загрузить запуски.')
+      }
+    }
+    void load()
+    return () => { active = false; clearTimeout(poll) }
   }, [workflowId, runId, attempt])
 
   return <main className="garden">
@@ -44,7 +56,7 @@ export function RunsPage({ workflowId, runId }: { workflowId: string; runId?: st
       {runs?.length === 0 && <p>У сценария пока нет запусков.</p>}
       {run && <>
         <p>{run.report.summary}</p>
-        <p className="garden-meta">Снимок {run.snapshotId} · CI {run.ci.status}</p>
+        <p className="garden-meta" data-detail-ci={run.ci.status}>Снимок {run.snapshotId} · CI {run.ci.status}</p>
         {getHighlight(run.ci).nodeIds.length > 0 && <a
           href={`?${new URLSearchParams({ workflow: run.workflowId, ciRun: run.id })}`}>
           Показать решение CI на графе
@@ -55,6 +67,8 @@ export function RunsPage({ workflowId, runId }: { workflowId: string; runId?: st
           {run.findings.map(finding => <FindingCard key={finding.id} finding={finding}
             recommendation={run.recommendations.find(recommendation => recommendation.findingId === finding.id)} />)}
         </div>
+        {run.snapshotId === 'pr-1' && run.findings.some(finding => finding.id === 'F-key') &&
+          <FixDialog key={run.id} run={run} findingId="F-key" />}
         {run.ci.gateNodeId && <ThresholdPreview key={run.id} runId={run.id} nodeId={run.ci.gateNodeId} />}
         <ComparisonPage key={run.id} run={run} />
       </>}

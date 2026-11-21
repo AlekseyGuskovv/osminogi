@@ -35,6 +35,9 @@ const runStorageKey = 'cyber-garden.mock.runs.v2'
 const runs = new Map<string, StoredRun>()
 let nextWorkflow = 2
 let nextRun = 4
+let nextPreview = 1
+const fixPreviews = new Map<string, { runId: string; sourceSnapshotId: string }>()
+const patchedSnapshots = new Set<string>()
 
 const configuredBase: string | undefined = import.meta.env.VITE_API_BASE
 const api = (path: string) => `${(configuredBase ?? '/api/v1').replace(/\/+$/, '')}${path}`
@@ -327,6 +330,34 @@ export const handlers = [
       next = workflow.edges.find(edge => edge.from === next && edge.branch === 'next')?.to
     }
     return HttpResponse.json({ nodeId, value, branch, wouldNotify })
+  }),
+  http.post(api('/runs/:runId/fix-preview'), async ({ params, request }) => {
+    const run = runs.get(String(params.runId))
+    if (!run) return notFound('Запуск не найден.')
+    const body = await readBody(request)
+    const finding = run.result.findings.find(item => item.id === body?.findingId)
+    if (run.result.snapshotId !== 'pr-1' || finding?.id !== 'F-key' || runResponse(run).status !== 'succeeded') {
+      return error(422, 'FIX_UNAVAILABLE', 'Для этой находки нет подготовленного учебного исправления.')
+    }
+    const previewId = `fix-${nextPreview++}`
+    fixPreviews.set(previewId, { runId: run.result.id, sourceSnapshotId: run.result.snapshotId })
+    return HttpResponse.json({
+      previewId,
+      path: finding.path,
+      before: finding.evidence,
+      after: 'api-key: ${DEMO_API_KEY}',
+    })
+  }),
+  http.post(api('/runs/:runId/apply-fix'), async ({ params, request }) => {
+    const runId = String(params.runId)
+    if (!runs.has(runId)) return notFound('Запуск не найден.')
+    const body = await readBody(request)
+    const preview = typeof body?.previewId === 'string' ? fixPreviews.get(body.previewId) : undefined
+    if (!preview || preview.runId !== runId || patchedSnapshots.has(preview.sourceSnapshotId)) {
+      return error(409, 'STALE_PREVIEW', 'Предпросмотр устарел. Обновите снимок перед применением.')
+    }
+    patchedSnapshots.add(preview.sourceSnapshotId)
+    return HttpResponse.json({ snapshotId: 'pr-2' }, { status: 201 })
   }),
   http.get(api('/runs/:runId/events'), ({ params, request }) => {
     const run = runs.get(String(params.runId))

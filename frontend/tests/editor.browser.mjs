@@ -349,6 +349,47 @@ try {
     return 'Red CI: analyzer, condition and yes branch highlighted in the editor'
   }, '/?workflow=wf-1&ciRun=run-1')
 
+  await evaluate(4175, async () => {
+    async function waitFor(predicate) {
+      for (let i = 0; i < 80; i++) {
+        const value = predicate()
+        if (value) return value
+        await new Promise(resolve => setTimeout(resolve, 50))
+      }
+      throw new Error('Fix dialog did not reach the expected state')
+    }
+    const button = text => [...document.querySelectorAll('button')].find(item => item.textContent === text)
+    const { postJson, ApiError } = await import('/src/api.ts')
+    async function expectError(path, body, status, code) {
+      try { await postJson(path, body) }
+      catch (error) { if (error instanceof ApiError && error.status === status && error.code === code) return; throw error }
+      throw new Error('Missing API error ' + code)
+    }
+    await expectError('/runs/run-2/fix-preview', { findingId: 'F-dep' }, 422, 'FIX_UNAVAILABLE')
+    await expectError('/runs/run-1/apply-fix', { previewId: 'unknown' }, 409, 'STALE_PREVIEW')
+    const open = await waitFor(() => button('Посмотреть учебное исправление'))
+    open.click()
+    const apply = await waitFor(() => button('Применить исправление'))
+    const parts = [...document.querySelectorAll('dialog pre')].map(item => item.textContent)
+    if (parts[0] !== 'api-key: ••••' || parts[1] !== 'api-key: ${DEMO_API_KEY}') throw new Error('Unexpected masked diff')
+    apply.click()
+    await waitFor(() => document.querySelector('[data-fixed-snapshot="pr-2"]'))
+    await expectError('/runs/run-1/apply-fix', { previewId: 'fix-1' }, 409, 'STALE_PREVIEW')
+    button('Проверить новый снимок').click()
+    const next = await waitFor(() => document.querySelector('dialog a'))
+    if (!next.href.includes('run=run-6')) throw new Error('Expected repeat run link')
+    return 'Fix: masked diff, confirmation, stale preview, unsupported finding and repeat launch passed'
+  }, '/?view=runs&workflow=wf-1&run=run-1')
+
+  await evaluate(4175, async () => {
+    for (let i = 0; i < 80; i++) {
+      const status = document.querySelector('[data-detail-ci="passed"]')
+      if (status?.textContent.includes('pr-2')) return 'Fix flow: repeated run against pr-2 is green'
+      await new Promise(resolve => setTimeout(resolve, 50))
+    }
+    throw new Error('Repeat run did not turn green')
+  }, '/?view=runs&workflow=wf-1&run=run-6')
+
   await evaluate(4176, async () => {
     const { installMocks } = await import('/src/mocks/worker.ts')
     await installMocks()

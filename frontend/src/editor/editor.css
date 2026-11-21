@@ -84,3 +84,12 @@
 .garden-preview { margin-top: 24px; }
 .garden-preview form { display: flex; align-items: end; flex-wrap: wrap; gap: 9px; }
 .garden-preview label { display: grid; gap: 5px; }
+.garden-dialog { width: min(620px, calc(100% - 28px)); min-width: 0; color: #edf4ef; background: #17211b; border: 1px solid #385146; border-radius: 14px; padding: 20px; }
+.garden-dialog::backdrop { background: #08100bcc; }
+.garden-dialog a { color: #a9e9c6; }
+.garden-dialog form { margin-top: 12px; }
+.garden-dialog h2 { margin-top: 0; }
+.garden-fix-diff { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(225px, 100%), 1fr)); gap: 10px; margin-bottom: 12px; }
+.garden-fix-diff > div { border: 1px solid #35463d; padding: 10px; border-radius: 8px; }
+.garden-fix-diff h3 { margin: 0; font-size: 13px; }
+.garden-fix-diff pre { white-space: pre-wrap; overflow-wrap: anywhere; }
