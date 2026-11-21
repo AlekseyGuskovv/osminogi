@@ -115,6 +115,80 @@ try {
   start(chrome, ['--headless', '--window-size=1440,1000', '--no-first-run', '--no-default-browser-check', '--disable-background-networking', '--disable-component-update', '--disable-sync', '--remote-debugging-port=0', '--user-data-dir=' + join(root, 'chrome-v2'), 'about:blank'])
   debug = await until(async () => (await readFile(join(root, 'chrome-v2', 'DevToolsActivePort'), 'utf8')).split('\n')[0])
 
+  for (const [id, branch, status, reason] of [
+    ['run-1', 'YES', 'FAILED', 'CRITICAL_FOUND'],
+    ['run-2', 'NO', 'PASSED', 'NO_CRITICAL'],
+  ]) {
+    await evaluate(4175, new Function(`return async () => {
+      async function until(predicate) {
+        for (let i = 0; i < 150; i++) {
+          const value = predicate()
+          if (value) return value
+          await new Promise(resolve => setTimeout(resolve, 20))
+        }
+        throw Error('Explainable CI did not reach the expected state')
+      }
+      const button = (root, label) => [...root.querySelectorAll('button')].find(item => item.textContent === label)
+      const preview = await until(() => document.querySelector('.garden-preview'))
+      const threshold = preview.querySelector('select')
+      threshold.value = 'high'
+      threshold.dispatchEvent(new Event('change', { bubbles: true }))
+      button(preview, 'Предпросмотр').click()
+      await until(() => preview.querySelector('[data-preview-branch]'))
+      const trigger = button(document, '${status}' === 'FAILED' ? 'Почему CI не пройден?' : 'Объяснение CI')
+      const open = () => document.querySelector('section[aria-label="Объяснение CI"]')
+      trigger.click()
+      const panel = await until(open)
+      if (document.querySelectorAll('.garden-preview').length !== 1 || threshold.value !== 'high' ||
+        !(panel.compareDocumentPosition(preview) & Node.DOCUMENT_POSITION_FOLLOWING)) throw Error('Threshold duplicated or reset')
+      const step = () => panel.querySelector('.replay-step').textContent
+      if ('${status}' === 'FAILED') {
+        await until(() => step().includes('Secrets') && step().includes('secret'))
+      }
+      button(panel, 'Далее').click()
+      await until(() => panel.querySelector('nav [aria-pressed="true"]').textContent.includes('Находка'))
+      if ('${status}' === 'FAILED') {
+        if (!step().includes('F-key') || !step().includes('Critical')) throw Error('Critical finding missing')
+        button(panel, 'Открыть находку').click()
+        await until(() => panel.querySelector('[data-finding-id="F-key"]'))
+      } else if (panel.textContent.includes('F-key') || button(panel, 'Открыть находку')) throw Error('Old finding leaked into green CI')
+      button(panel, 'Далее').click()
+      await until(() => step().includes('gate') && step().includes('${branch}'))
+      button(panel, 'Далее').click()
+      await until(() => step().includes('CI ${status}') && step().includes('${reason}'))
+      button(panel, 'Назад').click()
+      await until(() => step().includes('${branch}'))
+      const link = new URL(panel.querySelector('a[href*="ciRun"]').href)
+      if (link.searchParams.get('ciRun') !== '${id}' || link.searchParams.get('explain') !== '1') throw Error('Wrong explanation link')
+      button(panel, 'Закрыть').click()
+      await until(() => !open() && document.activeElement === trigger)
+      trigger.click()
+      await until(open)
+      if (document.querySelectorAll('.garden-preview').length !== 1) throw Error('Reopening duplicated the preview')
+      const { getJson } = await import('/src/api.ts')
+      const run = await getJson('/runs/${id}')
+      if ('${status}' === 'PASSED' && (!run.steps.some(item => item.nodeId === 'tg' && item.status === 'skipped') ||
+        run.findings.some(item => item.id === 'F-key'))) throw Error('Green run fixture is inconsistent')
+      return 'Explainable CI ${id}: all four steps, correct finding and route, stable threshold preview and focus'
+    }`)(), '/?view=runs&workflow=wf-1&run=' + id)
+
+    await evaluate(4175, new Function(`return async () => {
+      const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+      const edgeId = 'gate:${branch.toLowerCase()}'
+      const panel = () => document.querySelector('.replay-inspector [aria-label="Объяснение CI"]')
+      for (let i = 0; i < 150 && (!panel() || !document.querySelector('[data-id="' + edgeId + '"].garden-ci-edge')); i++) await sleep(20)
+      const canvas = document.querySelector('.react-flow')
+      const gate = canvas?.querySelector('[data-id="gate"] [data-ci-highlight]')
+      if (!gate || !panel() || !canvas.querySelector('[data-id="' + edgeId + '"].garden-ci-edge') ||
+        ('${status}' === 'FAILED' && !canvas.querySelector('[data-id="secret"] [data-ci-highlight]'))) throw Error('Graph evidence is incorrect')
+      const identity = [...canvas.querySelectorAll('.react-flow__node, .react-flow__edge')]
+      ;[...panel().querySelectorAll('button')].find(button => button.textContent === 'Закрыть').click()
+      await sleep(100)
+      if (panel() || !identity.every(element => element.isConnected) || canvas !== document.querySelector('.react-flow')) throw Error('Close remounted the graph')
+      return 'Explainable graph ${id}: correct branch and stable Canvas'
+    }`)(), '/?workflow=wf-1&ciRun=' + id + '&explain=1')
+  }
+
   await evaluate(4175, async () => {
     function assert(value, message) {
       if (!value) throw new Error(message)

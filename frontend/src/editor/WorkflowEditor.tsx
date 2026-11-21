@@ -664,7 +664,8 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain }:
           <button className="garden-layout" type="button" disabled={pending} onClick={order}><Icon name="layout" size={15} />Упорядочить</button>
         </section>
         {!longDemo && workflow && (!demoOpen && explanationRun
-          ? <aside className="replay-inspector"><ExplainableCI key={explanationRun.id} run={explanationRun}
+          ? <aside className="replay-inspector"><ExplainableCI key={explanationRun.id} run={explanationRun} initialStep={0}
+            analyzerType={workflow.nodes.find(node => node.id === explanationRun.ci.nodeId)?.type}
             onClose={() => setExplanationOpen(false)} onFocus={focusEvidence} /></aside>
           : <aside ref={inspector} className="garden-panel garden-settings" id="workflow-inspector" data-open={inspectorOpen} aria-label="Настройки блока">
           <div className="garden-inspector-title"><h2>Настройки</h2><button className="garden-inspector-close" onClick={() => { setInspectorOpen(false); setInspectorCollapsed(true) }} aria-label="Закрыть настройки">×</button></div>

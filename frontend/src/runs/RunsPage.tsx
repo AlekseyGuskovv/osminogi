@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Icon } from '../ui/Icon'
 import { WorkspaceNav } from '../ui/WorkspaceNav'
 import { StatusBadge } from '../ui/StatusBadge'
@@ -11,6 +11,7 @@ import { FixDialog } from './FixDialog'
 import { FindingCard } from './FindingCard'
 import { ThresholdPreview } from './ThresholdPreview'
 import type { Run } from './types'
+import type { Workflow } from '../workflow'
 
 import { getHighlight } from './ci'
 import { runsUrl } from './navigation'
@@ -44,7 +45,25 @@ export function RunsPage({ workflowId, runId, openTimeMachine }: { workflowId: s
   }, [workflowId, runId, attempt])
 
   const [timeMachine, setTimeMachine] = useState(Boolean(openTimeMachine))
-  const [explanation, setExplanation] = useState(false)
+  const [explanationId, setExplanationId] = useState<string>()
+  const [explanationWorkflow, setExplanationWorkflow] = useState<Workflow>()
+  const explanationTrigger = useRef<HTMLButtonElement>(null)
+  const explanation = Boolean(run && explanationId === run.id)
+  const explanationWorkflowId = explanation ? run?.workflowId : undefined
+
+  useEffect(() => {
+    if (!explanationWorkflowId) return
+    let active = true
+    void getJson<Workflow>(`/workflows/${encodeURIComponent(explanationWorkflowId)}`).then(workflow => {
+      if (active) setExplanationWorkflow(workflow)
+    }).catch(() => { /* The run still identifies the analyzer by node ID. */ })
+    return () => { active = false }
+  }, [explanationWorkflowId])
+
+  function closeExplanation() {
+    setExplanationId(undefined)
+    explanationTrigger.current?.focus()
+  }
   const live = useRunStatus(run?.status === 'queued' || run?.status === 'running' ? run.id : undefined)
 
   const metrics = runs && [
@@ -85,11 +104,17 @@ export function RunsPage({ workflowId, runId, openTimeMachine }: { workflowId: s
       {run && <>
         <div className="replay-controls">
           <button aria-expanded={timeMachine} onClick={() => setTimeMachine(value => !value)}>Машина времени безопасности</button>
-          {run.ci.status !== 'pending' && <button aria-expanded={explanation} onClick={() => setExplanation(value => !value)}>
+          {run.ci.status !== 'pending' && <button ref={explanationTrigger} aria-expanded={explanation} onClick={() => explanation
+            ? closeExplanation() : setExplanationId(run.id)}>
             {run.ci.status === 'failed' ? 'Почему CI не пройден?' : 'Объяснение CI'}
           </button>}
         </div>
-        {timeMachine && <TimeMachine key={run.id} workflowId={run.workflowId} initialId={run.id} />}
+        {explanation && <ExplainableCI key={`explanation:${run.id}`} run={run} initialStep={0}
+          analyzerType={explanationWorkflow?.id === run.workflowId
+            ? explanationWorkflow.nodes.find(node => node.id === run.ci.nodeId)?.type : undefined}
+          onClose={closeExplanation}
+          graphHref={`?${new URLSearchParams({ workflow: run.workflowId, ciRun: run.id, explain: '1' })}`} />}
+        {timeMachine && <TimeMachine key={`time-machine:${run.id}`} workflowId={run.workflowId} initialId={run.id} />}
         <div className="garden-run-summary" data-detail-ci={run.ci.status}>
           <div className="garden-run-summary-badges"><span>Выполнение сценария</span><StatusBadge kind="run" status={run.status} />
             <span>Проверка безопасности (CI)</span><StatusBadge kind="ci" status={run.ci.status} /></div>
@@ -110,17 +135,13 @@ export function RunsPage({ workflowId, runId, openTimeMachine }: { workflowId: s
           {run.findings.map(finding => <FindingCard key={finding.id} finding={finding} workflowId={run.workflowId}
             recommendation={run.recommendations.find(recommendation => recommendation.findingId === finding.id)} />)}
         </div>
-        {run.ci.gateNodeId && <ThresholdPreview key={run.id} runId={run.id} nodeId={run.ci.gateNodeId} />}
+        {run.ci.gateNodeId && <ThresholdPreview key={`threshold:${run.id}:${run.ci.gateNodeId}`} runId={run.id} nodeId={run.ci.gateNodeId} />}
         {live && <section className="replay-panel" aria-label="Выполнение в реальном времени">
           <p className="replay-kicker">SECURITY PULSE · SSE</p>
           <StatusBadge kind="run" status={live.status} />
           <ul>{Object.entries(live.nodes).map(([id, node]) => <li key={id}><code>{id}</code> · {node.status}</li>)}</ul>
         </section>}
-        {explanation && <ExplainableCI key={run.id} run={run} onClose={() => setExplanation(false)} />}
-        {explanation && <a href={`?${new URLSearchParams({ workflow: run.workflowId, ciRun: run.id, explain: '1' })}`}>
-          Открыть объяснение на графе
-        </a>}
-        <ComparisonPage key={run.id} run={run} />
+        <ComparisonPage key={`comparison:${run.id}`} run={run} />
       </>}
     </section>
     </main>
