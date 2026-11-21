@@ -5,6 +5,7 @@ const paths = {
   findings: 'M11 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6M7 7h10M7 11h5m-5 4h2m11.5 5.5L22 22m-1-5a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z',
   snapshots: 'm12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5',
   templates: 'M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z',
+  settings: 'M4 6h5m4 0h7M4 12h10m4 0h2M4 18h2m4 0h10M9 4h4v4H9zm5 6h4v4h-4zm-8 6h4v4H6z',
   start: 'm8 5 12 7-12 7z',
   finish: 'M5 12l4 4L19 6',
   secrets: 'M14 10a5 5 0 1 1 5 5l-5 5h-3v-3l5-5',

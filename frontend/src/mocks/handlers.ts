@@ -98,6 +98,14 @@ const patchedSnapshots = new Set<string>()
 const configuredBase: string | undefined = import.meta.env.VITE_API_BASE
 const api = (path: string) => `${(configuredBase ?? '/api/v1').replace(/\/+$/, '')}${path}`
 
+const mockCatalog = {
+  source: 'training', analysisVersion: 'demo', osvAvailable: false, customAvailable: false, updating: false,
+  osvUpdatedAt: null as string | null, refreshIntervalHours: 0, nextRefreshAt: null as string | null,
+}
+const mockAi = { mode: 'custom', checking: false, providers: [
+  { id: 'demo', name: 'Демонстрационный AI', model: null, status: 'unknown' },
+] }
+
 function error(status: number, code: string, message: string) {
   return HttpResponse.json({ code, message }, { status })
 }
@@ -370,7 +378,51 @@ export const handlers = [
     }
     return HttpResponse.json(snapshot, { status: 201 })
   }),
+  http.get(api('/advisory-catalog'), () => HttpResponse.json(mockCatalog)),
+  http.post(api('/advisory-catalog/source'), async ({ request }) => {
+    const source = (await readBody(request))?.source
+    if (source !== 'training' && !(source === 'osv' && mockCatalog.osvAvailable)) {
+      return error(422, 'INVALID_CATALOG_SOURCE', 'Выберите доступный справочник.')
+    }
+    mockCatalog.source = source
+    mockCatalog.analysisVersion = source === 'osv' ? 'demo-osv' : 'demo'
+    return HttpResponse.json(mockCatalog)
+  }),
+  http.post(api('/advisory-catalog/refresh'), () => {
+    mockCatalog.osvAvailable = true
+    mockCatalog.osvUpdatedAt = new Date().toISOString()
+    return HttpResponse.json(mockCatalog, { status: 202 })
+  }),
+  http.post(api('/advisory-catalog/schedule'), async ({ request }) => {
+    const hours = (await readBody(request))?.refreshIntervalHours
+    if (hours !== 0 && hours !== 24 && hours !== 168) return error(422, 'INVALID_CATALOG_SCHEDULE', 'Укажите период обновления.')
+    mockCatalog.refreshIntervalHours = hours
+    mockCatalog.nextRefreshAt = hours ? new Date(Date.now() + hours * 3600000).toISOString() : null
+    return HttpResponse.json(mockCatalog)
+  }),
+  http.get(api('/settings/ai'), () => HttpResponse.json(mockAi)),
+  http.post(api('/settings/ai/test'), () => {
+    mockAi.providers[0].status = 'available'
+    return HttpResponse.json(mockAi, { status: 202 })
+  }),
+  http.get(api('/settings/storage'), () => HttpResponse.json({ databaseBytes: 0, snapshotBytes: 0, runBytes: 0,
+    snapshotCount: allSnapshots().length, runCount: runs.size })),
+  http.get(api('/settings/storage/backup'), () => error(422, 'DEMO_BACKUP_UNAVAILABLE', 'Для резервной копии подключите бэкенд.')),
   http.get(api('/connections'), () => HttpResponse.json([...connections.values()])),
+  http.post(api('/connections/:id/edit'), async ({ params, request }) => {
+    const connection = connections.get(String(params.id))
+    if (!connection) return notFound('Подключение Telegram не найдено.')
+    const body = await readBody(request)
+    const updated = { ...connection, name: typeof body?.name === 'string' ? body.name.trim() : connection.name,
+      configured: typeof body?.configured === 'boolean' ? body.configured : connection.configured }
+    connections.set(updated.id, updated)
+    try { globalThis.localStorage?.setItem(connectionStorageKey, JSON.stringify([...connections.values()])) } catch {
+      // Keep the edit available on this page.
+    }
+    return HttpResponse.json(updated)
+  }),
+  http.post(api('/connections/:id/test'), ({ params }) => channelConfigured(params.id)
+    ? HttpResponse.json({ messageId: 1 }) : error(409, 'CONNECTION_DISABLED', 'Включите подключение перед проверкой.')),
   http.post(api('/connections'), async ({ request }) => {
     const body = await readBody(request)
     if (body?.type !== 'telegram' || typeof body.name !== 'string' || !body.name.trim() ||

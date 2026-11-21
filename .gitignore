@@ -3,5 +3,6 @@ __pycache__/
 .venv/
 .env
 .garden-data/
+*.garden-key
 examples/archives/
 tools/defense/Telegram.txt

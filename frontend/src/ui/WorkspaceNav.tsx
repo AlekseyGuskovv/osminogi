@@ -1,7 +1,7 @@
 import { runsUrl } from '../runs/navigation'
 import { Icon } from './Icon'
 
-export function WorkspaceNav({ workflowId, section }: { workflowId?: string; section: 'editor' | 'runs' | 'findings' | 'snapshots' | 'templates' }) {
+export function WorkspaceNav({ workflowId, section }: { workflowId?: string; section: 'editor' | 'runs' | 'findings' | 'snapshots' | 'templates' | 'settings' }) {
   const id = workflowId ?? 'new'
   const links = [
     { key: 'editor', label: 'Конструктор', icon: 'graph', href: `?workflow=${encodeURIComponent(id)}` },
@@ -9,6 +9,7 @@ export function WorkspaceNav({ workflowId, section }: { workflowId?: string; sec
     { key: 'findings', label: 'Находки', icon: 'findings', href: `?view=findings&workflow=${encodeURIComponent(id)}` },
     { key: 'snapshots', label: 'Снимки', icon: 'snapshots', href: `?view=snapshots&workflow=${encodeURIComponent(id)}` },
     { key: 'templates', label: 'Шаблоны', icon: 'templates', href: `?view=templates&workflow=${encodeURIComponent(id)}` },
+    { key: 'settings', label: 'Настройки', icon: 'settings', href: `?view=settings&workflow=${encodeURIComponent(id)}` },
   ] as const
 
   return <aside className="garden-rail">

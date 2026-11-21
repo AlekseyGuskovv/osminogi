@@ -1,11 +1,19 @@
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 import json
 import os
 from pathlib import Path
 import sqlite3
 import re
+from tempfile import TemporaryDirectory
 
 from .contract import ApiError
+
+
+RECORDS_SCHEMA = """CREATE TABLE IF NOT EXISTS records (
+    kind TEXT NOT NULL, id TEXT NOT NULL, body TEXT NOT NULL,
+    modified TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(kind,id))"""
+WORKSPACE_KINDS = ("snapshot", "run", "events", "workflow", "revision", "connection", "node-template",
+                   "schedule", "fix", "setting", "template")
 
 
 class Store:
@@ -17,9 +25,7 @@ class Store:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             db.execute("PRAGMA journal_mode = WAL")
-            db.execute("""CREATE TABLE IF NOT EXISTS records (
-                kind TEXT NOT NULL, id TEXT NOT NULL, body TEXT NOT NULL,
-                modified TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(kind,id))""")
+            db.execute(RECORDS_SCHEMA)
 
     def kind(self, name):
         return name if self.workspace == "local" or name == "template" else f"{self.workspace}:{name}"
@@ -58,6 +64,47 @@ class Store:
         with self.connect() as db:
             row = db.execute("SELECT body FROM records WHERE kind=? AND id=?", (self.kind(kind), key)).fetchone()
         return json.loads(row[0]) if row else None
+
+    def patch(self, kind, key, changes):
+        with self.connect() as db:
+            row = db.execute("""UPDATE records SET body=json_patch(body,?), modified=CURRENT_TIMESTAMP
+                                WHERE kind=? AND id=? RETURNING body""",
+                             (json.dumps(changes), self.kind(kind), key)).fetchone()
+            return json.loads(row[0]) if row else None
+
+    def storage_usage(self):
+        snapshot, run, events = (self.kind(kind) for kind in ("snapshot", "run", "events"))
+        with self.connect() as db:
+            rows = db.execute("""SELECT kind,count(*),sum(length(CAST(body AS BLOB)))
+                                FROM records WHERE kind IN (?,?,?) GROUP BY kind""", (snapshot, run, events))
+            sizes = {kind: (count, size) for kind, count, size in rows}
+        snapshots, snapshot_bytes = sizes.get(snapshot, (0, 0))
+        runs, run_bytes = sizes.get(run, (0, 0))
+        database_bytes = 0
+        for path in (self.path, self.path.with_name(self.path.name + "-wal")):
+            try:
+                database_bytes += path.stat().st_size
+            except FileNotFoundError:
+                pass
+        return {"databaseBytes": database_bytes, "snapshotCount": snapshots, "snapshotBytes": snapshot_bytes,
+                "runCount": runs, "runBytes": run_bytes + sizes.get(events, (0, 0))[1]}
+
+    @contextmanager
+    def backup(self):
+        kinds = tuple(self.kind(kind) for kind in WORKSPACE_KINDS)
+        placeholders = ",".join("?" for _ in kinds)
+        try:
+            with TemporaryDirectory(prefix="cyber-garden-backup-") as directory:
+                path = Path(directory) / "garden.sqlite3"
+                with self.connect() as source, closing(sqlite3.connect(path)) as target, target:
+                    target.execute(RECORDS_SCHEMA)
+                    rows = source.execute(f"""SELECT kind,id,body,modified FROM records
+                        WHERE kind IN ({placeholders}) OR kind IN (SELECT ? || id FROM records WHERE kind=?)""",
+                                          (*kinds, self.kind("finding-review:"), self.kind("workflow")))
+                    target.executemany("INSERT INTO records(kind,id,body,modified) VALUES(?,?,?,?)", rows)
+                yield path
+        except (OSError, sqlite3.Error) as error:
+            raise ApiError(503, "BACKUP_FAILED", "Не удалось подготовить резервную копию.") from error
 
     def list(self, kind, limit=-1):
         with self.connect() as db:

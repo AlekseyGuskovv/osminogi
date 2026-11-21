@@ -4,7 +4,7 @@ from uuid import uuid4
 from .analysis.remediation import apply_training_patch, build_safe_patch
 from .analysis.report import markdown, submission
 from .analysis.types import Finding
-from .connections import connections, save_connection
+from .connections import connections, save_connection, send_connection_test, update_connection
 from .engine import SCAN_TYPES
 from .findings import finding_history, findings_overview, review_finding
 from .snapshots import compare_snapshots, rename_snapshot, require_snapshot, save_version, snapshot_library, snapshot_run_index
@@ -215,6 +215,13 @@ class WordApi:
             handler.reply(200, rename_snapshot(self.store, pieces[1], data.get("label")))
         elif path == "/connections":
             handler.reply(201, save_connection(self.store, data))
+        elif len(pieces) == 3 and pieces[0] == "connections":
+            if pieces[2] == "edit":
+                handler.reply(200, update_connection(self.store, pieces[1], data))
+            elif pieces[2] == "test":
+                handler.reply(200, send_connection_test(self.store, pieces[1]))
+            else:
+                return False
         elif len(pieces) == 5 and pieces[0] == "workflows" and pieces[2] == "findings" and pieces[4] == "review":
             key = self.workflow(pieces[1])["id"]
             handler.reply(200, review_finding(self.store, key, pieces[3], self.runs(key), data))

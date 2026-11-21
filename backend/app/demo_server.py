@@ -4,9 +4,12 @@ from email import policy
 from email.parser import BytesParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import logging
 import os
 from pathlib import Path
 import re
+from shutil import copyfileobj
+from sqlite3 import Error as DatabaseError
 from threading import Condition, Event, Thread
 from urllib.error import URLError
 from urllib.parse import parse_qs, urlsplit
@@ -26,6 +29,7 @@ from .node_templates import generate_node_template, save_node_template
 from .project_import import (
     ArchiveTooLarge, MAX_UPLOAD, ORGANIZER_COMMIT, ORGANIZER_REPOSITORY, read_organizer_project, read_project,
 )
+from .settings import AiDiagnostics
 from .snapshots import save_version, snapshot_ref
 from .store import Store
 from .template_yaml import MAX_TEMPLATE_BYTES, YAML_MEDIA_TYPES, import_template, portable_graph
@@ -38,6 +42,7 @@ RUNS = {}
 STORE: Store
 WORD_API = None
 CATALOG: CatalogService
+AI_DIAGNOSTICS: AiDiagnostics
 
 
 def project(snapshot_id):
@@ -168,6 +173,10 @@ def load_run(key):
 def scheduler(stop):
     while not stop.is_set():
         now = datetime.now(UTC)
+        try:
+            CATALOG.refresh_due(now)
+        except (ApiError, DatabaseError):
+            logging.exception("Could not schedule the OSV update")
         for workflow in STORE.list("workflow"):
             schedule = schedule_value(workflow.get("schedule"))
             if not schedule:
@@ -196,6 +205,23 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.end_headers()
         self.wfile.write(body)
+
+    def send_database_backup(self):
+        origin = self.headers.get("Origin")
+        if (origin or self.headers.get("Sec-Fetch-Site") == "cross-site") and not self.allowed_origin():
+            raise ApiError(403, "ORIGIN_DENIED", "Источник запроса не разрешён.")
+        with STORE.backup() as path, path.open("rb") as stream:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/vnd.sqlite3")
+            self.send_header("Content-Length", str(path.stat().st_size))
+            self.send_header("Content-Disposition", 'attachment; filename="cyber-garden.sqlite3"')
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            try:
+                copyfileobj(stream, self.wfile, length=64 * 1024)
+            except ConnectionError:
+                pass
 
     def send_ci_workflow(self, workflow_id):
         template = (EXTERNAL_CI / "security.yml").read_text(encoding="utf-8")
@@ -263,6 +289,15 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/advisory-catalog":
             self.reply(200, CATALOG.status())
+            return
+        if path == "/settings/ai":
+            self.reply(200, AI_DIAGNOSTICS.status())
+            return
+        if path == "/settings/storage":
+            self.reply(200, STORE.storage_usage())
+            return
+        if path == "/settings/storage/backup":
+            self.send_database_backup()
             return
         if path == "/node-templates":
             self.reply(200, STORE.list("node-template"))
@@ -402,6 +437,12 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/advisory-catalog/source":
                 self.reply(200, CATALOG.select(data.get("source")))
                 return
+            if path == "/advisory-catalog/schedule":
+                self.reply(200, CATALOG.schedule(data.get("refreshIntervalHours")))
+                return
+            if path == "/settings/ai/test":
+                self.reply(202, AI_DIAGNOSTICS.start())
+                return
             if path == "/node-templates/draft":
                 self.reply(200, generate_node_template(data.get("prompt"), PROVIDER))
                 return
@@ -465,10 +506,11 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    global STORE, CATALOG, WORD_API
+    global STORE, CATALOG, WORD_API, AI_DIAGNOSTICS
     STORE = Store(ROOT)
     default = ROOT / "docs/training-advisories.json"
-    CATALOG = CatalogService(default, Path(os.environ.get("GARDEN_ADVISORIES", default)))
+    CATALOG = CatalogService(default, Path(os.environ.get("GARDEN_ADVISORIES", default)), store=STORE)
+    AI_DIAGNOSTICS = AiDiagnostics(PROVIDER)
     WORD_API = WordApi(STORE, load_run, save_workflow, launch, project, condition, snapshot_catalog)
     for row in STORE.list("run"):
         if row["status"] in {"queued", "running"}:
