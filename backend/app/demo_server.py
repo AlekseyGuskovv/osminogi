@@ -184,6 +184,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path in {"/openapi.json", "/api/v1/openapi.json"}:
             self.reply(200, OPENAPI)
             return
+        if self.path in {"/docs", "/docs/"}:
+            self.send_bytes(200, (ROOT / "docs/swagger.html").read_bytes(), "text/html")
+            return
         if self.path == "/":
             self.send_bytes(200, (ROOT / "index.html").read_bytes(), "text/html")
             return
