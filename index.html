@@ -59,10 +59,10 @@
     <p>В <code>cyber-garden.yml</code> уже записан ID сценария <code id="ciWorkflowId"></code>.</p>
     <ol>
       <li>В проверяемом приватном репозитории добавьте <code>cyber-garden.yml</code> в папку <code>.github/workflows/</code>.</li>
-      <li><a href="/api/v1/ci/client" download="check_cyber_garden.py">Скачайте Python-клиент</a> и положите его в <code>.github/scripts/</code>. Отправьте оба файла в базовую ветку, например <code>main</code>.</li>
+      <li><a href="/api/v1/ci/client" download="check_cyber_garden.py">Скачайте Python-клиент</a> и положите его в <code>.github/scripts/</code>. Добавьте оба файла в защищённую ветку <code>main</code>.</li>
       <li>На компьютере с Octavius подключите к этому репозиторию Windows self-hosted runner с меткой <code>cyber-garden</code>. Git должен быть доступен ему в <code>PATH</code>.</li>
       <li>В GitHub откройте <strong>Settings → Secrets and variables → Actions → Variables</strong>. Задайте <code>GARDEN_PYTHON</code> с полным путём к <code>python.exe</code> на компьютере runner. Если порт Octavius отличается от <code>8000</code>, задайте <code>GARDEN_PORT</code>. Для Kotlin-проекта в подпапке задайте <code>GARDEN_PROJECT_DIR</code>.</li>
-      <li>Оставьте Octavius и runner запущенными и откройте PR между ветками этого репозитория. В сохранённом сценарии CI должны выполняться все три анализатора. Результат появится в разделе <strong>Checks</strong> этого PR.</li>
+      <li>Оставьте Octavius и runner запущенными и откройте PR в <code>main</code> из ветки того же репозитория. В сохранённом сценарии CI должны выполняться все три анализатора. Результат появится в разделе <strong>Checks</strong> этого PR.</li>
     </ol>
     <form method="dialog"><button>Закрыть</button></form>
   </article>
