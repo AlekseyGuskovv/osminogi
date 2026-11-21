@@ -2,7 +2,7 @@ import { Background, Controls, Handle, MarkerType, Position, ReactFlow } from '@
 import type { Connection, Node, NodeChangeset, NodeProps } from '@xyflow/react'
 import { useEffect, useState } from 'react'
 import { getJson } from '../api'
-import { useStartRun } from '../runs/useRun'
+import { useRunStatus, useStartRun } from '../runs/useRun'
 import { nodeTypes } from '../workflow'
 import type { NodeType, Workflow } from '../workflow'
 import { newWorkflow, saveDraft } from './useWorkflow'
@@ -55,6 +55,8 @@ export function WorkflowEditor({ workflowId }: EditorProps) {
   const [saving, setSaving] = useState(false)
   const { start, starting, accepted } = useStartRun()
   const pending = saving || starting
+  const runView = useRunStatus(accepted?.id)
+  const runStatus = runView?.status ?? accepted?.status
   const [notice, setNotice] = useState<{ text: string; error?: boolean }>()
   const activeNode = workflow?.nodes.find(node => node.id === selectedId)
 
@@ -154,7 +156,10 @@ export function WorkflowEditor({ workflowId }: EditorProps) {
       </section>
       {notice && <p className={`garden-notice ${notice.error ? 'error' : ''}`} role={notice.error ? 'alert' : 'status'}>{notice.text}</p>}
       {accepted && <section className="garden-run-accepted" aria-label="Текущий запуск">
-        <strong>{accepted.id}</strong> <span data-run-status={accepted.status}>В очереди</span>
+        <strong>{accepted.id}</strong> <span data-run-status={runStatus}>{{
+          queued: 'В очереди', running: 'Выполняется', succeeded: 'Проверка завершена', failed: 'Проверка завершилась ошибкой',
+        }[runStatus ?? 'queued']}</span>
+        {runView?.ciStatus && <span data-ci-status={runView.ciStatus}>CI · {runView.ciStatus}</span>}
       </section>}
       {loading && <p className="garden-notice" role="status">Загрузка сценария…</p>}
       {!loading && !workflow && <button className="garden-retry" onClick={() => { setLoading(true); setNotice(undefined); setLoadAttempt(attempt => attempt + 1) }}>Повторить</button>}

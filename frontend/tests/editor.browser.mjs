@@ -71,6 +71,7 @@ async function evaluate(port, test, path = "/") {
         await call('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x + distance, y: y + distance / 2, buttons: 1 })
       }
       await call('Input.dispatchMouseEvent', { type: 'mouseReleased', x: x + 45, y: y + 22.5, button: 'left', clickCount: 1 })
+      await call('Runtime.evaluate', { expression: 'setTimeout(() => { globalThis.dragComplete = true }, 35)' })
     })
     const result = await call('Runtime.evaluate', {
       expression: '(' + test.toString() + ')()',
@@ -133,6 +134,7 @@ try {
     assert(condition.contains(document.elementFromPoint(x, y)), 'Drag starts on visible node')
     globalThis.dispatchDrag(JSON.stringify({ x, y }))
     await waitFor(() => Math.abs(condition.getBoundingClientRect().left - rect.left) > 5)
+    await waitFor(() => globalThis.dragComplete)
     assert(canvas.contains(condition), 'Dragged condition still on canvas')
 
     const select = document.querySelector('.garden-actions select')
@@ -171,15 +173,20 @@ try {
       window.fetch = nativeFetch
     }
 
+    await waitFor(() => document.querySelector('[data-run-status="succeeded"]'))
+    assert(document.querySelector('[data-ci-status="failed"]'), 'Native SSE separates completed run from red CI')
     const { postJson } = await import('/src/api.ts')
     const addAndSelect = () => palette.querySelectorAll('button')[1].click()
     addAndSelect()
     await waitFor(() => document.querySelector('[data-id="secrets-1"] .source'))
-    document.querySelector('[data-id="start"] .source').click()
-    document.querySelector('[data-id="secrets-1"] .target').click()
-    await waitFor(() => !document.querySelector('[data-id="start"] .connecting'))
-    document.querySelector('[data-id="secrets-1"] .source').click()
-    document.querySelector('[data-id="secret"] .target').click()
+    const clickHandle = async selector => {
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+      document.querySelector(selector).click()
+    }
+    await clickHandle('[data-id="start"] .source')
+    await clickHandle('[data-id="secrets-1"] .target')
+    await clickHandle('[data-id="secrets-1"] .source')
+    await clickHandle('[data-id="secret"] .target')
     await waitFor(() => document.querySelector('[data-testid="rf__edge-secrets-1:next"]'))
     buttons.find(button => button.textContent === 'Сохранить').click()
     await waitFor(() => document.querySelector('[role="status"]')?.textContent.includes('ревизия 3'))
@@ -197,11 +204,12 @@ try {
     await waitFor(() => document.querySelectorAll('.react-flow__node').length === 11)
     assert(document.querySelector('[data-id="secrets-2"]') && document.querySelector('[data-id="secrets-3"]'), 'Duplicate block types receive distinct IDs')
     const edgePath = branch => document.querySelector(`[data-testid="rf__edge-gate:${branch}"] path.react-flow__edge-path`)?.getAttribute('d')
+    await waitFor(() => edgePath("yes") && edgePath("no"))
     const yesPath = edgePath('yes')
     const noPath = edgePath('no')
     assert(yesPath && noPath, 'Existing branch paths')
-    condition.querySelector('[data-handleid="yes"]').click()
-    document.querySelector('.react-flow__node[data-id="end"] .target').click()
+    await clickHandle('[data-id="gate"] [data-handleid="yes"]')
+    await clickHandle('.react-flow__node[data-id="end"] .target')
     await waitFor(() => edgePath('yes') && edgePath('yes') !== yesPath)
     assert(edgePath('no') === noPath, 'Changing yes leaves no unchanged')
     condition.querySelector('.garden-node').click()

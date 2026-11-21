@@ -1,5 +1,7 @@
-import { useRef, useState } from 'react'
-import { postJson } from '../api'
+import { useEffect, useRef, useState } from 'react'
+import { getJson, postJson } from '../api'
+import { subscribeRun } from './events'
+import type { CiStatus, RunStatus } from './events'
 
 export type RunRequest = {
   trigger: 'manual' | 'schedule' | 'ci'
@@ -34,4 +36,36 @@ export function useStartRun() {
   }
 
   return { start, starting, accepted }
+}
+
+
+type RunSummary = { id: string; status: RunStatus; ci: { status: CiStatus } }
+
+export function useRunStatus(runId?: string) {
+  const [view, setView] = useState<{ id: string; status: RunStatus; ciStatus?: CiStatus }>()
+
+  useEffect(() => {
+    if (!runId) return
+    const id = runId
+    let active = true
+    async function refresh() {
+      const run = await getJson<RunSummary>(`/runs/${encodeURIComponent(id)}`)
+      if (active) setView({ id, status: run.status, ciStatus: run.ci.status })
+      return run.status === 'queued' || run.status === 'running'
+    }
+
+    const unsubscribe = subscribeRun(id, async event => {
+      if (event.type === 'run.status') setView({ id, status: event.data.status })
+      if (event.type === 'run.finished') {
+        setView({ id, status: event.data.status, ciStatus: event.data.ciStatus })
+        await refresh()
+      }
+    }, refresh)
+    return () => {
+      active = false
+      unsubscribe()
+    }
+  }, [runId])
+
+  return view?.id === runId ? view : undefined
 }
