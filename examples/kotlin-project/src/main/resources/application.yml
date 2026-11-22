@@ -1,2 +1,2 @@
 server.address: 127.0.0.1
-api-key: ${TRAINING_API_KEY:}
+api-key: demo-ci-only-12345
