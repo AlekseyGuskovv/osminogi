@@ -629,20 +629,23 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain, r
       <WorkspaceNav workflowId={workflow?.id ?? workflowId} section="editor" />
       <main className="garden">
       <section className="garden-heading garden-editor-heading">
-        <div className="garden-heading-text">
-          <p className="garden-kicker">Сценарии <span>/</span> Конструктор</p>
-          <h1>{workflow?.name ?? 'Редактор сценариев'}</h1>
-          {workflow && <div className="garden-workflow-meta"><code>{workflow.id ?? 'Черновик'}{workflow.id && ` / r${workflow.revision}`}</code>
-            <span className="garden-save-state" data-dirty={Boolean(dirty)}>{saving ? 'Сохранение…' : dirty ? 'Есть изменения' : 'Сохранено'}</span>
-          </div>}
+        <div className="garden-hero-content">
+          <div className="garden-heading-text">
+            <p className="garden-kicker">Сценарии <span>/</span> Конструктор</p>
+            <h1>{workflow?.name ?? 'Редактор сценариев'}</h1>
+            {workflow && <div className="garden-workflow-meta"><code>{workflow.id ?? 'Черновик'}{workflow.id && ` / r${workflow.revision}`}</code>
+              <span className="garden-save-state" data-dirty={Boolean(dirty)}>{saving ? 'Сохранение…' : dirty ? 'Есть изменения' : 'Сохранено'}</span>
+            </div>}
+          </div>
+          <div className="garden-actions">
+            <button type="button" disabled={pending} onClick={openDemo}>Режим демонстрации</button>
+            {workflow && <>
+              <button disabled={pending || demoOpen || Boolean(recordedGraph)} onClick={() => void submit('save')}>Сохранить</button>
+              <button className="garden-primary" disabled={pending || demoOpen || Boolean(recordedGraph) || !snapshotId} onClick={() => void submit('run')}><Icon name="start" size={15} />Запустить</button>
+            </>}
+          </div>
         </div>
-        <div className="garden-actions">
-          <button type="button" disabled={pending} onClick={openDemo}>Режим демонстрации</button>
-          {workflow && <>
-            <button disabled={pending || demoOpen || Boolean(recordedGraph)} onClick={() => void submit('save')}>Сохранить</button>
-            <button className="garden-primary" disabled={pending || demoOpen || Boolean(recordedGraph) || !snapshotId} onClick={() => void submit('run')}><Icon name="start" size={15} />Запустить</button>
-          </>}
-        </div>
+        <div className="garden-hero-prisms" aria-hidden="true"><span /><span /><span /><span /></div>
       </section>
       {workflow && <div className="garden-toolbar">
         <div className="garden-toolbar-group"><a href="?workflow=new"><Icon name="plus" size={15} />Новый сценарий</a>
