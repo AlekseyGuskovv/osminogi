@@ -88,7 +88,7 @@ function fittedViewport(workflow: EditableWorkflow, width: number, height: numbe
 }
 
 const statuses = { queued: 'В очереди', running: 'Выполняется', succeeded: 'Готово', failed: 'Ошибка', skipped: 'Пропущен' }
-type Block = Node<{ kind: NodeType; detail?: string; status?: keyof typeof statuses; reconstructed?: boolean; activation?: { phase: 'running' | 'succeeded'; bindMotion: Playback['bindMotion']; key: string }; arrival?: boolean; branch?: 'yes' | 'no'; critical?: boolean; highlighted?: boolean; ciPassed?: boolean; muted?: boolean }, 'workflow'>
+type Block = Node<{ kind: NodeType; hasOutgoingEdge?: boolean; detail?: string; status?: keyof typeof statuses; reconstructed?: boolean; activation?: { phase: 'running' | 'succeeded'; bindMotion: Playback['bindMotion']; key: string }; arrival?: boolean; branch?: 'yes' | 'no'; critical?: boolean; highlighted?: boolean; ciPassed?: boolean; muted?: boolean }, 'workflow'>
 export type EditorProps = { workflowId?: string; ciRunId?: string; copiedTemplate?: boolean; explain?: boolean; replay?: boolean }
 
 const WorkflowBlock = memo(function WorkflowBlock({ id, data, selected }: NodeProps<Block>) {
@@ -107,7 +107,7 @@ const WorkflowBlock = memo(function WorkflowBlock({ id, data, selected }: NodePr
         <span className="garden-port no" aria-hidden="true">NO</span>
         <Handle type="source" id="yes" position={Position.Right} style={{ top: '28%' }} aria-label="Выход YES" />
         <Handle type="source" id="no" position={Position.Right} style={{ top: '76%' }} aria-label="Выход NO" />
-      </> : kind !== 'finish' && kind !== 'telegram' && <Handle type="source" id="next" position={Position.Right} aria-label="Выход" />}
+      </> : kind !== 'finish' && (kind !== 'telegram' || data.hasOutgoingEdge) && <Handle type="source" id="next" position={Position.Right} aria-label="Выход" />}
     </div>
   )
 })
@@ -595,9 +595,12 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain, r
   }
 
   const completedNode = playback.completedNode
+  const outgoingNodes = useMemo(() => new Set(
+    displayedWorkflow?.edges.map(edge => edge.from),
+  ), [displayedWorkflow?.edges])
   const nodes = useMemo<Block[]>(() => (displayedWorkflow?.nodes ?? []).map(node => ({
     id: node.id, type: 'workflow', zIndex: 2, position: { x: node.x, y: node.y },
-    data: { reconstructed: reconstructed?.reconstructed?.has(node.id), kind: node.type, detail: node.name || (longDemo && mock ? demoDetails.get(node.id) : node.type === 'condition' ? conditionLabel(node.settings) : undefined), status: visualRun?.nodes[node.id]?.status,
+    data: { reconstructed: reconstructed?.reconstructed?.has(node.id), kind: node.type, hasOutgoingEdge: outgoingNodes.has(node.id), detail: node.name || (longDemo && mock ? demoDetails.get(node.id) : node.type === 'condition' ? conditionLabel(node.settings) : undefined), status: visualRun?.nodes[node.id]?.status,
       activation: activation && playbackView?.nodes[node.id]?.status === 'running'
         ? { ...activation, phase: 'running' } : activation && node.id === completedNode
           ? { ...activation, phase: 'succeeded' } : undefined,
@@ -607,7 +610,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain, r
       highlighted: highlight?.nodeIds.includes(node.id),
       ciPassed: highlightRun?.ci.status === 'passed',
       muted: Boolean(explanationRun && highlight?.nodeIds.length && !highlight.nodeIds.includes(node.id)) }, selected: node.id === selectedId,
-  })), [displayedWorkflow?.nodes, longDemo, mock, reconstructed, visualRun, highlight, selectedId, explanationRun, highlightRun, pulseNode, playbackView, activation, completedNode, playback.edge, criticalNode, criticalFinding])
+  })), [displayedWorkflow?.nodes, outgoingNodes, longDemo, mock, reconstructed, visualRun, highlight, selectedId, explanationRun, highlightRun, pulseNode, playbackView, activation, completedNode, playback.edge, criticalNode, criticalFinding])
   const edges = useMemo(() => (displayedWorkflow?.edges ?? []).map(edge => {
     const highlighted = highlight?.edge?.from === edge.from && highlight.edge.branch === edge.branch
     const id = `${edge.from}:${edge.branch}`

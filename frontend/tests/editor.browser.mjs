@@ -215,7 +215,9 @@ try {
     await waitFor(() => document.querySelectorAll('.react-flow__node').length === 8)
     await waitFor(() => document.querySelectorAll('.react-flow__edge').length === 7)
     const palette = document.querySelector('[aria-label="Палитра"]')
-    assert(palette.querySelectorAll('button').length === 8, 'Eight palette items')
+    const { nodeTypes } = await import('/src/workflow.ts')
+    assert([...palette.querySelectorAll('[data-block-type]')].map(item => item.dataset.blockType).sort().join() ===
+      [...nodeTypes].sort().join(), 'Palette contains every workflow node type')
     const condition = document.querySelector('.react-flow__node[data-id="gate"]')
     condition.querySelector('.garden-node').click()
     assert(condition.querySelectorAll('.source').length === 2, 'Two condition outputs')
@@ -268,7 +270,7 @@ try {
     const workflow = await getJson('/workflows/wf-1')
     const gate = workflow.nodes.find(node => node.id === 'gate')
     assert(gate.x !== 430, 'Drag coordinates saved to API')
-    assert(gate.settings.value === 'high', 'Condition form updates saved threshold')
+    assert(gate.settings.rules?.[0]?.value === 'high', 'Condition form updates saved threshold')
     assert(workflow.schedule?.timezone === 'Europe/Moscow', 'Schedule form updates saved workflow')
     assert(workflow.nodes.find(node => node.id === 'tg').settings.channelId === 'team-demo', 'Telegram channel remains in graph')
     const runButton = buttons.find(button => button.textContent.includes('Запустить'))
@@ -385,7 +387,7 @@ try {
     const saved = await getJson('/workflows/wf-1')
     if (saved.revision !== 4 || !saved.nodes.some(node => node.id === 'secrets-1') ||
       saved.nodes.some(node => node.id === 'secrets-2') ||
-      saved.nodes.find(node => node.id === 'gate')?.settings.value !== 'high') {
+      saved.nodes.find(node => node.id === 'gate')?.settings.rules?.[0]?.value !== 'high') {
       throw new Error('Stored workflow was not restored')
     }
     for (let attempt = 0; attempt < 80 && !document.querySelector('.react-flow__node'); attempt++) {
@@ -962,9 +964,9 @@ try {
       if (canvas.querySelectorAll('[data-ci-highlight]').length !== 2) throw new Error('Expected analyzer and condition')
       find(panel, 'Открыть находку').click()
       await until(() => panel.querySelector('[data-finding-id="F-key"]'))
-      find(panel, 'Далее').click()
-      await until(() => panel.textContent.includes('Исправляем уязвимость'))
-      find(panel, 'Далее').click()
+      find(panel.querySelector(':scope > .replay-controls'), 'Далее').click()
+      await until(() => panel.textContent.includes('Учебное исправление'))
+      find(panel.querySelector(':scope > .replay-controls'), 'Далее').click()
       await until(() => panel.querySelector('.replay-resolved [data-finding-id="F-key"]'))
       const compare = panel.querySelector('[aria-label="Машина времени безопасности"]')
       find(compare, 'До').click()
@@ -973,8 +975,8 @@ try {
       find(compare, 'После').click()
       await until(() => compare.querySelector('[data-replay-phase="after"] .replay-resolved [data-finding-id="F-key"]'))
       await until(() => canvas.querySelector('[data-id="gate:no"].garden-ci-edge'))
-      find(panel, 'Назад').click()
-      await until(() => panel.textContent.includes('Исправляем уязвимость'))
+      find(panel.querySelector(':scope > .replay-controls'), 'Назад').click()
+      await until(() => panel.textContent.includes('Учебное исправление'))
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
       await until(() => !document.querySelector('.replay-presentation') && view() === camera)
       if (writes.length || !graph.every(element => element.isConnected)) throw new Error('Slideshow modified data or remounted the graph')
@@ -1111,7 +1113,7 @@ try {
         }
       } else if (beam.isConnected) throw new Error('Failed activation remained visible')
     }
-    if (colors.size !== 5) throw new Error('Scanner did not inherit the existing accents')
+    if (colors.size !== 5) throw new Error('Hologram did not inherit the existing accents')
     return 'Holographic Activation: all eight node types, all five accents, queued/skipped and succeeded/failed'
   }, '/?workflow=wf-1')
 
@@ -1265,6 +1267,12 @@ try {
       await until(() => canvas.querySelector('[data-id="demo-gate:yes"] .pulse-edge-core'), 24000)
       if (canvas.querySelector('[data-id="demo-gate:no"] .pulse-edge-core')) throw new Error('YES lit the wrong edge')
       await until(() => node('telegram', 'running'))
+      const deliveryPulse = await until(() => canvas.querySelector('[data-id="demo-telegram:next"] .pulse-edge-core'))
+      const deliveryEdge = deliveryPulse.closest('.react-flow__edge').querySelector('.react-flow__edge-path')
+      if (deliveryPulse.getAttribute('d') !== deliveryEdge.getAttribute('d')) {
+        throw new Error('Telegram pulse does not follow the rendered edge')
+      }
+      await until(() => node('finish', 'running'))
       await until(() => panel.querySelector('[data-ci-status="failed"]'))
       const red = (performance.now() - started) / 1000
       if (red < 20 || !node('finish', 'succeeded')) throw new Error('Red run incomplete')
