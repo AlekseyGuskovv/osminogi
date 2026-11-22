@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import './editor/editor.css'
 import './security-replay/replay.css'
+import './theme.css'
+import { PrismIntro } from './ui/Theme'
 import App from './App.tsx'
 import { installMocks } from './mocks/worker'
 
@@ -11,6 +13,7 @@ async function startApp() {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <App />
+      <PrismIntro />
     </StrictMode>,
   )
 }

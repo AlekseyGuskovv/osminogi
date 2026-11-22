@@ -185,7 +185,7 @@ const FlowCanvas = memo(function FlowCanvas({
     onNodeClick={overview ? undefined : (_, node) => onPickNode(node.id)}
     onEdgeClick={overview ? undefined : (_, edge) => onPickEdge(edge.id)}
     onPaneClick={overview ? undefined : onClearSelection}>
-    <Background color="#33464e" gap={24} size={1.2} />
+    <Background color="var(--graph-grid, #33464e)" gap={24} size={1.2} />
     <Controls showInteractive={false} />
   </ReactFlow>
 })
@@ -391,7 +391,13 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain, r
   useEffect(() => {
     const element = canvas.current
     if (!element) return
+    let theme = document.documentElement.dataset.theme ?? 'dark'
     const resize = new ResizeObserver(() => {
+      const nextTheme = document.documentElement.dataset.theme ?? 'dark'
+      if (nextTheme !== theme) {
+        theme = nextTheme
+        return
+      }
       if (!cameraTouched.current && draftRef.current) fit(draftRef.current)
     })
     resize.observe(element)
@@ -594,7 +600,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain, r
     const related = selectedEdge === id || (selectedId !== '' && (edge.from === selectedId || edge.to === selectedId))
     const choice = branchChoice(edge, visualRun)
     const pulse = playback.edge?.from === edge.from && playback.edge.branch === edge.branch && playback.edge.to === edge.to
-    const color = choice === 'taken' ? '#72e3ac' : highlighted ? highlightRun?.ci.status === 'passed' ? '#72e3ac' : '#f1747b' : related ? '#72e3ac' : edge.branch === 'yes' ? '#80a993' : edge.branch === 'no' ? '#be9e6b' : '#71868f'
+    const color = choice === 'taken' ? 'var(--graph-active, #72e3ac)' : highlighted ? highlightRun?.ci.status === 'passed' ? 'var(--graph-active, #72e3ac)' : 'var(--graph-danger, #f1747b)' : related ? 'var(--graph-active, #72e3ac)' : edge.branch === 'yes' ? 'var(--graph-yes, #80a993)' : edge.branch === 'no' ? 'var(--graph-no, #be9e6b)' : 'var(--graph-edge, #71868f)'
     return {
       id, source: edge.from, target: edge.to, sourceHandle: edge.branch, type: 'workflow', interactionWidth: 8, zIndex: 0,
       selected: id === selectedEdge,
