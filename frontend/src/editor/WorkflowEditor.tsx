@@ -17,7 +17,6 @@ import type { EditableWorkflow } from './useWorkflow'
 import { SnapshotPicker } from './SnapshotPicker'
 import { DraftDialog } from './DraftDialog'
 import { NodeCatalog } from './NodeCatalog'
-import { AdvisoryPanel } from './AdvisoryPanel'
 import { NodeSettings } from './NodeSettings'
 import { addNode, connect, removeNode } from './graph'
 import '@xyflow/react/dist/style.css'
@@ -725,7 +724,6 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain, r
             onImport={snapshot => setSnapshots(current => [...current.filter(item => item.id !== snapshot.id), snapshot])} />
 
       </div>}
-      <AdvisoryPanel organizer={snapshots.some(snapshot => snapshot.id === snapshotId && snapshot.catalogSource === 'organizer')} />
       {draftWarnings.length > 0 && <section className="garden-notice garden-draft-notice" data-feedback="warning" aria-label="Предупреждения черновика">
         <ul>{draftWarnings.map(warning => <li key={warning}>{warning}</li>)}</ul>
         {missingChannel && <button type="button" onClick={() => { setSelectedId(missingChannel.id); setInspectorCollapsed(false); setInspectorOpen(true) }}>Настроить Telegram</button>}

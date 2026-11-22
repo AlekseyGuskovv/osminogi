@@ -1,12 +1,12 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" data-theme="prism-light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script>
       try {
-        if (localStorage.getItem('cyber-garden-theme') === 'prism-light') {
-          document.documentElement.dataset.theme = 'prism-light'
+        if (localStorage.getItem('cyber-garden-theme') === 'dark') {
+          document.documentElement.dataset.theme = 'dark'
         }
       } catch {}
     </script>
@@ -15,6 +15,6 @@
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script type="module" src="./src/main.tsx"></script>
   </body>
 </html>
