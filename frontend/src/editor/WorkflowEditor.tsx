@@ -20,6 +20,7 @@ import { NodeSettings } from './NodeSettings'
 import { addNode, connect, removeNode } from './graph'
 import '@xyflow/react/dist/style.css'
 import { Icon } from '../ui/Icon'
+import { PrismHeroDecoration } from '../ui/PrismHeroDecoration'
 import { WorkspaceNav } from '../ui/WorkspaceNav'
 import { orderGraph } from './layout'
 import { ExplainableCI } from '../security-replay/ExplainableCI'
@@ -645,7 +646,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain, r
             </>}
           </div>
         </div>
-        <div className="garden-hero-prisms" aria-hidden="true"><span /><span /><span /><span /></div>
+        <PrismHeroDecoration />
       </section>
       {workflow && <div className="garden-toolbar">
         <div className="garden-toolbar-group"><a href="?workflow=new"><Icon name="plus" size={15} />Новый сценарий</a>

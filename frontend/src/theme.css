@@ -221,25 +221,60 @@
   display: block; width: 244px; height: 172px; position: absolute; z-index: -1;
   inset: 6px 5% auto auto; pointer-events: none;
 }
+/* Individual transform properties keep the glass bevel's base skew intact. */
 .garden-hero-prisms > span {
   position: absolute; width: var(--cube); height: var(--cube); border-radius: 18%;
   border: 1px solid #fff;
-  background: linear-gradient(132deg, #ffffffda, #c7f590b9 29%, #62c9a78c 67%, #c3a8ed9c 88%, #f7fafe);
+  overflow: hidden;
+  background: var(--prism-fill, linear-gradient(132deg, #ffffffda, #c7f590b9 29%, #62c9a78c 67%, #c3a8ed9c 88%, #f7fafe));
   box-shadow: inset 4px 4px 8px #ffffffc9, inset -5px -5px 10px #327b7052, 5px 12px 18px #4b8d7042;
   transform: rotate(-13deg) skew(-3deg, -3deg);
+  animation: prism-float var(--float-duration) ease-in-out var(--phase) infinite;
 }
 .garden-hero-prisms > span::before {
   content: ''; position: absolute; inset: 8%; border: 1px solid #ffffffe0; border-radius: 15%;
   background: linear-gradient(132deg, #fff4, transparent 38%, #eafffd55);
 }
-.garden-hero-prisms > span:nth-child(1) { --cube: 91px; left: 50px; top: 53px; }
-.garden-hero-prisms > span:nth-child(2) { --cube: 69px; left: 137px; top: 20px; background: linear-gradient(145deg, white, #a5eaa9a3 48%, #5cbfacad); }
-.garden-hero-prisms > span:nth-child(3) { --cube: 59px; left: 155px; top: 102px; background: linear-gradient(145deg, white, #d9d1f6 45%, #9ce2f1, #b4dfb3); }
-.garden-hero-prisms > span:nth-child(4) { --cube: 41px; left: 13px; top: 21px; opacity: .72; }
+.garden-hero-prisms > span::after {
+  content: ''; position: absolute; inset: 5% -35%;
+  background: linear-gradient(110deg, transparent 35%, #eaffef50 47%, #fff9 50%, #e3e8ff50 53%, transparent 66%);
+  opacity: 0;
+  animation: prism-reflection var(--reflection-duration) ease-in-out var(--phase) infinite;
+}
+.garden-hero-prisms .prism-center {
+  --cube: 91px; left: 50px; top: 53px;
+  --float-duration: 7s; --phase: -1s; --lift: -8px; --tilt: 2deg; --reflection-duration: 10s;
+}
+.garden-hero-prisms .prism-upper-right {
+  --cube: 69px; left: 137px; top: 20px;
+  --prism-fill: linear-gradient(145deg, white, #a5eaa9a3 48%, #5cbfacad);
+  --float-duration: 8s; --phase: -3s; --lift: -6px; --tilt: -1.5deg; --reflection-duration: 11s;
+}
+.garden-hero-prisms .prism-lower-right {
+  --cube: 59px; left: 155px; top: 102px;
+  --prism-fill: linear-gradient(145deg, white, #d9d1f6 45%, #9ce2f1, #b4dfb3);
+  --float-duration: 9s; --phase: -5s; --lift: -5px; --tilt: 1deg; --reflection-duration: 12s;
+}
+.garden-hero-prisms .prism-upper-left {
+  --cube: 41px; left: 13px; top: 21px; opacity: .72;
+  --float-duration: 6s; --phase: -2s; --lift: -4px; --tilt: -2deg; --reflection-duration: 8s;
+}
+@keyframes prism-float {
+  from, to { translate: 0 0; rotate: 0deg; }
+  50% { translate: 0 var(--lift); rotate: var(--tilt); }
+}
+@keyframes prism-reflection {
+  from { translate: -52% 0; opacity: 0; }
+  28% { opacity: .32; }
+  64%, to { translate: 52% 0; opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .garden-hero-prisms > span, .garden-hero-prisms > span::after { animation: none; }
+}
 [data-theme='prism-light'] .evolution .garden-finding[data-finding-variant='resolved'] { background: #edf8ef; }
 [data-theme='prism-light'] .garden-draft-warnings { background: #fff4db; }
 @media (max-width: 900px) {
-  :root .garden-hero-prisms { right: 0; transform: scale(.82); transform-origin: right center; }
+  :root .garden-hero-prisms { right: 0; opacity: .55; transform: scale(.82); transform-origin: right center; }
 }
 @media (max-width: 660px) {
   :root .garden-editor-heading { padding: 17px 15px; }

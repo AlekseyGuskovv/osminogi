@@ -13,7 +13,7 @@ export function ThemePicker() {
       try { localStorage.setItem(themeKey, theme) } catch { /* The current choice still applies. */ }
     }}>
       <option value="dark">Тёмная</option>
-      <option value="prism-light">PRISM Light</option>
+      <option value="prism-light">Светлая</option>
     </select>
   </label>
 }
