@@ -63,6 +63,17 @@ async function evaluate(port, test, path = "/", reducedMotion = false) {
     if (reducedMotion) await call('Emulation.setEmulatedMedia', {
       features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
     })
+    await until(async () => {
+      const result = await call('Runtime.evaluate', {
+        expression: `(() => {
+          const intro = document.querySelector('.prism-intro[open]')
+          intro?.querySelector('button')?.click()
+          return !intro
+        })()`,
+        returnByValue: true,
+      })
+      return result.result.value
+    })
     await call('Runtime.enable', {})
     let syntheticTokenLogged = false
     socket.addEventListener('message', message => {
@@ -624,7 +635,7 @@ try {
     await waitFor(() => location.search === '?workflow=wf-4')
     const saved = await getJson('/workflows/wf-4')
     if (saved.nodes.find(node => node.id === 'gate').settings.value !== 'high') throw new Error('Draft edits lost on save')
-    button('▷ Запустить').click()
+    button('Запустить').click()
     await waitFor(() => document.querySelector('[data-run-status="succeeded"]'))
     if (!document.querySelector('[data-ci-status="passed"]')) throw new Error('Draft run did not pass')
     return 'AI draft: generated, edited, explicitly saved, and ran to green CI'

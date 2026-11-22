@@ -1,3 +1,4 @@
+import { PrismIcon } from '../ui/Icon'
 import { FindingHistory } from './FindingHistory'
 import type { Finding, Recommendation } from './types'
 import type { ReactNode } from 'react'
@@ -21,7 +22,7 @@ export function FindingCard({ finding, recommendation, workflowId, variant, acti
   return <article className="garden-finding" data-finding-id={finding.id} data-finding-variant={variant}>
     <header>
       <h3>{finding.title}</h3>
-      {resolved ? <span className="evolution-resolved-badge">✓ Устранена</span>
+      {resolved ? <span className="evolution-resolved-badge"><PrismIcon name="check" size={13} /> Устранена</span>
         : <span className="garden-severity" data-severity={finding.severity}>{severityLabels[finding.severity]}</span>}
     </header>
     {resolved && <p className="evolution-history">Историческая критичность · {severityLabels[finding.severity]}</p>}

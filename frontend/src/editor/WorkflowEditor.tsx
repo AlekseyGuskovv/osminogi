@@ -1,4 +1,4 @@
-import { Background, BaseEdge, Controls, Handle, MarkerType, Position, ReactFlow, getSmoothStepPath, useNodesState } from '@xyflow/react'
+import { Background, BaseEdge, ControlButton, Controls, Handle, MarkerType, Position, ReactFlow, getSmoothStepPath, useNodesState, useReactFlow, useViewportStore } from '@xyflow/react'
 import type { Connection, Edge, EdgeProps, Node, NodeChangeset, NodeProps, ReactFlowInstance, Viewport } from '@xyflow/react'
 import type { DragEvent } from 'react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -152,6 +152,19 @@ type FlowCanvasProps = {
   onClearSelection: () => void
 }
 
+function GraphControls({ minZoom, maxZoom }: { minZoom: number; maxZoom: number }) {
+  const flow = useReactFlow()
+  const zoom = useViewportStore(state => state.transform[2])
+  return <Controls showZoom={false} showFitView={false} showInteractive={false} aria-label="Управление графом">
+    <ControlButton className="react-flow__controls-zoomin" aria-label="Приблизить" title="Приблизить"
+      disabled={zoom >= maxZoom} onClick={() => void flow.zoomIn()}><Icon name="plus" size={16} /></ControlButton>
+    <ControlButton className="react-flow__controls-zoomout" aria-label="Отдалить" title="Отдалить"
+      disabled={zoom <= minZoom} onClick={() => void flow.zoomOut()}><Icon name="minus" size={16} /></ControlButton>
+    <ControlButton className="react-flow__controls-fitview" aria-label="Показать весь граф" title="Показать весь граф"
+      onClick={() => void flow.fitView()}><Icon name="fit" size={16} /></ControlButton>
+  </Controls>
+}
+
 const FlowCanvas = memo(function FlowCanvas({
   nodes, edges, pending, overview, onInit, onMoveStart, onPositionCommit, onConnect, onPickNode, onPickEdge, onClearSelection,
 }: FlowCanvasProps) {
@@ -186,7 +199,7 @@ const FlowCanvas = memo(function FlowCanvas({
     onEdgeClick={overview ? undefined : (_, edge) => onPickEdge(edge.id)}
     onPaneClick={overview ? undefined : onClearSelection}>
     <Background color="var(--graph-grid, #33464e)" gap={24} size={1.2} />
-    <Controls showInteractive={false} />
+    <GraphControls minZoom={overview ? .08 : .2} maxZoom={2} />
   </ReactFlow>
 })
 
@@ -627,7 +640,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain, r
           <button type="button" disabled={pending} onClick={openDemo}>Режим демонстрации</button>
           {workflow && <>
             <button disabled={pending || demoOpen || Boolean(recordedGraph)} onClick={() => void submit('save')}>Сохранить</button>
-            <button className="garden-primary" disabled={pending || demoOpen || Boolean(recordedGraph) || !snapshotId} onClick={() => void submit('run')}>▷ Запустить</button>
+            <button className="garden-primary" disabled={pending || demoOpen || Boolean(recordedGraph) || !snapshotId} onClick={() => void submit('run')}><Icon name="start" size={15} />Запустить</button>
           </>}
         </div>
       </section>
@@ -746,7 +759,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain, r
             analyzerType={displayedWorkflow.nodes.find(node => node.id === explanationRun.ci.nodeId)?.type}
             onClose={() => setExplanationOpen(false)} onFocus={focusEvidence} /></aside>
           : <aside ref={inspector} className="garden-panel garden-settings" id="workflow-inspector" data-open={inspectorOpen} aria-label="Настройки блока">
-          <div className="garden-inspector-title"><h2>Настройки</h2><button className="garden-inspector-close" onClick={() => { setInspectorOpen(false); setInspectorCollapsed(true) }} aria-label="Закрыть настройки">×</button></div>
+          <div className="garden-inspector-title"><h2>Настройки</h2><button className="garden-inspector-close" onClick={() => { setInspectorOpen(false); setInspectorCollapsed(true) }} aria-label="Закрыть настройки"><Icon name="close" size={13} /></button></div>
           {activeNode ? <>
             <div className="garden-inspector-node" data-node-tone={labels[activeNode.type][2]}>
               <span className="garden-icon"><Icon name={activeNode.type} /></span><div><h3>{activeNode.name || labels[activeNode.type][0]}</h3><code>{activeNode.id}</code></div>
