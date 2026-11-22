@@ -6,7 +6,6 @@
   --heading-fill: linear-gradient(116deg, #142823, #10211c 56%, #212535);
   --hero-fill: radial-gradient(ellipse at 85% 8%, #274737, transparent 54%),
     linear-gradient(105deg, #142823, #10241a 56%, #182938 87%, #27263a);
-  --mark-fill: linear-gradient(145deg, #123f32, #236b49);
   font-family: Manrope, system-ui, sans-serif;
 }
 
@@ -52,22 +51,6 @@
 [data-theme='prism-light'] .garden-rail {
   background: #fbfff9e8;
 }
-:root .garden-brand {
-  display: grid; justify-items: center; gap: 9px; margin: 4px 0 25px; text-align: center;
-}
-:root .garden-brand > .garden-prism-mark {
-  display: grid; place-items: center; width: 65px; height: 65px; overflow: hidden;
-  border-radius: 20px;
-  background: var(--mark-fill);
-  box-shadow: 0 7px 18px #194e3a2e, inset 0 1px #ffffff30;
-}
-.garden-prism-mark img { display: block; width: 100%; height: 100%; object-fit: contain; }
-:root .garden-brand > .garden-prism-name {
-  width: auto; height: auto; display: grid; gap: 3px;
-  background: none; color: var(--accent);
-}
-.garden-prism-name strong { font-size: 19px; letter-spacing: .13em; }
-.garden-prism-name small { max-width: 120px; text-wrap: balance; color: var(--muted); font-size: 11px; line-height: 1.3; }
 :root .garden-rail nav { gap: 7px; }
 :root .garden-rail nav a {
   grid-auto-flow: column; grid-template-columns: 19px minmax(0,1fr); justify-items: start;
@@ -158,9 +141,6 @@
   .garden-theme-picker > span { position: absolute; clip-path: inset(50%); }
   .garden-theme-picker select { max-width: 97px; }
   :root .garden-rail { gap: 6px; }
-  :root .garden-brand { margin: 0; }
-  :root .garden-brand > .garden-prism-name { display: none; }
-  :root .garden-brand > .garden-prism-mark { width: 36px; height: 36px; border-radius: 11px; }
   :root .garden-rail nav { gap: 2px; }
   :root .garden-rail nav a {
     display: grid; grid-auto-flow: row; grid-template-columns: 1fr;

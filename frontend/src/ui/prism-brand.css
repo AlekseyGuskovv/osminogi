@@ -1,0 +1,46 @@
+:root {
+  --prism-wordmark: url('../assets/prism-wordmark-dark.png');
+  --prism-signature: url('../assets/prism-signature-dark.png');
+}
+[data-theme='prism-light'] {
+  --prism-wordmark: url('../assets/prism-wordmark.png');
+  --prism-signature: url('../assets/prism-signature.png');
+}
+.garden-brand {
+  display: block;
+  margin: 4px 0 25px;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 8px;
+}
+.garden-brand:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.prism-brand { display: block; }
+.prism-brand-diamond { display: block; width: 100%; height: auto; }
+.prism-brand-wordmark, .prism-brand-signature {
+  display: block; width: 100%;
+  background: center / contain no-repeat;
+}
+.prism-brand-wordmark { aspect-ratio: 664 / 148; background-image: var(--prism-wordmark); }
+.prism-brand-signature { aspect-ratio: 663 / 27; background-image: var(--prism-signature); }
+
+.prism-brand--full { position: relative; width: 100%; aspect-ratio: 966 / 282; }
+.prism-brand--full .prism-brand-diamond { width: 30.02%; }
+.prism-brand--full .prism-brand-wordmark {
+  position: absolute; width: 68.74%; left: 31.26%; top: 14.54%;
+}
+.prism-brand--full .prism-brand-signature {
+  position: absolute; width: 68.63%; left: 28.99%; top: 74.82%;
+}
+.prism-brand--sidebar { display: grid; justify-items: center; gap: 2px; width: 100%; }
+.prism-brand--sidebar .prism-brand-diamond { width: 58px; max-width: 100%; }
+.prism-brand--sidebar .prism-brand-wordmark { width: min(122px, 100%); }
+.prism-brand-lines { display: grid; justify-items: center; }
+.prism-brand-lines svg { display: block; max-width: 100%; }
+.prism-brand-ink-light, [data-theme='prism-light'] .prism-brand-ink-dark { display: none; }
+[data-theme='prism-light'] .prism-brand-ink-light { display: inline; }
+
+@media (max-width: 660px) {
+  .garden-brand { margin: 0; }
+  .garden-brand .prism-brand--sidebar .prism-brand-diamond { width: 36px; }
+  .garden-brand .prism-brand-wordmark, .garden-brand .prism-brand-lines { display: none; }
+}

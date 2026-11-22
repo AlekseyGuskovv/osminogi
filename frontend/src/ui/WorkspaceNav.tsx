@@ -1,4 +1,5 @@
-import { ThemePicker, WorkspaceBrand } from './Theme'
+import { ThemePicker } from './Theme'
+import { PrismBrand } from './PrismBrand'
 import { runsUrl } from '../runs/navigation'
 import { Icon } from './Icon'
 
@@ -11,7 +12,7 @@ export function WorkspaceNav({ workflowId, section }: { workflowId?: string; sec
   ] as const
 
   return <aside className="garden-rail">
-    <WorkspaceBrand />
+    <a className="garden-brand" href="./"><PrismBrand variant="sidebar" /></a>
     <nav aria-label="Разделы рабочего пространства">
       {links.map(link => <a key={link.key} href={link.href} title={link.label} aria-current={section === link.key ? 'page' : undefined}>
         <Icon name={link.icon} /><span>{link.label}</span>
