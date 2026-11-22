@@ -116,9 +116,18 @@ try {
     $runtime = Get-Command node.exe -ErrorAction SilentlyContinue
     $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
     if (!$runtime -or !$npm) {
-        $ideRuntime = Join-Path $env:LOCALAPPDATA 'JetBrains\PyCharm2026.2\acp-agents\.runtimes\node'
-        $installed = Get-ChildItem -LiteralPath $ideRuntime -Directory -ErrorAction SilentlyContinue |
-            Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'node.exe') } |
+        $jetBrains = Join-Path $env:LOCALAPPDATA 'JetBrains'
+        $installed = Get-ChildItem -LiteralPath $jetBrains -Directory -Filter 'PyCharm*' -ErrorAction SilentlyContinue |
+            ForEach-Object {
+                $ideRuntime = Join-Path $_.FullName 'acp-agents\.runtimes\node'
+                Get-ChildItem -LiteralPath $ideRuntime -Directory -ErrorAction SilentlyContinue
+            } |
+            Where-Object {
+                $version = $null
+                [version]::TryParse($_.Name, [ref]$version) -and
+                (Test-Path -LiteralPath (Join-Path $_.FullName 'node.exe') -PathType Leaf) -and
+                (Test-Path -LiteralPath (Join-Path $_.FullName 'npm.cmd') -PathType Leaf)
+            } |
             Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
         if (!$installed) { throw 'Node.js и npm не найдены в PATH и окружении PyCharm.' }
         $env:Path = "$($installed.FullName);$env:Path"
@@ -141,7 +150,7 @@ try {
     if ($ports.Count) { throw 'Порт 18020 или 5188 занят. Закрой предыдущий запуск защиты.' }
 
     Write-Host 'Проверяю зависимости Python и собираю интерфейс.'
-    & $python -c 'import cryptography, tzdata'
+    & $python -c 'import cryptography, tzdata, ruamel.yaml'
     if ($LASTEXITCODE -ne 0) {
         & $python -m pip install -r (Join-Path $root 'requirements.txt')
         if ($LASTEXITCODE -ne 0) { throw 'Не удалось установить зависимости Python.' }

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 import json
 import logging
 from pathlib import Path
@@ -27,9 +28,10 @@ def parse_catalog(text: str, source: str) -> ActiveCatalog:
 
 
 class CatalogService:
-    def __init__(self, training: Path, configured: Path, cache: Path = DEFAULT_OUTPUT):
+    def __init__(self, training: Path, configured: Path, cache: Path = DEFAULT_OUTPUT, *, store=None):
         self._lock = Lock()
         self._cache = cache
+        self._store = store
         self._training = parse_catalog(training.read_text(encoding="utf-8-sig"), "training")
         self._configured = (self._training if configured.resolve() == training.resolve()
                             else parse_catalog(configured.read_text(encoding="utf-8-sig"), "custom"))
@@ -44,17 +46,53 @@ class CatalogService:
                 logging.warning("Could not read the cached OSV catalog.")
         self._updating = False
         self._error = None
+        saved = (store.get("setting", "catalog") or {}) if store is not None else {}
+        self._source = saved.get("source")
+        self._interval = saved.get("refreshIntervalHours", 0)
+        self._last_attempt = saved.get("lastAttemptAt")
+        selection = self._selection(self._source)
+        if selection is not None:
+            self._active = selection
+
+    def _selection(self, source):
+        if source == "training":
+            return self._training
+        if source == "osv":
+            return self._osv
+        if source == "custom" and self._configured.source == "custom":
+            return self._configured
+        return None
+
+    def _save(self, source, interval, last_attempt):
+        if self._store is not None:
+            self._store.put("setting", "catalog", {"source": source, "refreshIntervalHours": interval,
+                                                   "lastAttemptAt": last_attempt})
+        self._source, self._interval, self._last_attempt = source, interval, last_attempt
+
+    def _next_refresh(self, now):
+        if not self._interval:
+            return None
+        time = self._last_attempt or (self._osv.imported_at if self._osv else None)
+        if not isinstance(time, str):
+            return now
+        try:
+            parsed = datetime.fromisoformat(time)
+        except ValueError:
+            return now
+        return (parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)) + timedelta(hours=self._interval)
 
     def current(self) -> ActiveCatalog:
         with self._lock:
             return self._active
 
     def _status(self):
+        next_refresh = self._next_refresh(datetime.now(UTC))
         return {"source": self._active.source, "analysisVersion": self._active.version,
                 "osvAvailable": self._osv is not None,
                 "osvUpdatedAt": self._osv.imported_at if self._osv else None,
                 "customAvailable": self._configured.source == "custom",
-                "updating": self._updating, "error": self._error}
+                "updating": self._updating, "error": self._error, "refreshIntervalHours": self._interval,
+                "nextRefreshAt": next_refresh.isoformat() if next_refresh else None}
 
     def status(self):
         with self._lock:
@@ -62,28 +100,43 @@ class CatalogService:
 
     def select(self, source):
         with self._lock:
-            if source == "training":
-                self._active = self._training
-            elif source == "osv":
-                if self._osv is None:
+            selection = self._selection(source)
+            if selection is None:
+                if source == "osv":
                     raise ApiError(409, "OSV_UNAVAILABLE", "Сначала обновите каталог OSV.")
-                self._active = self._osv
-            elif source == "custom" and self._configured.source == "custom":
-                self._active = self._configured
-            else:
                 raise ApiError(422, "INVALID_CATALOG_SOURCE", "Выберите доступный справочник уязвимостей.")
+            self._save(source, self._interval, self._last_attempt)
+            self._active = selection
+            return self._status()
+
+    def schedule(self, interval):
+        if type(interval) is not int or interval not in (0, 24, 168):
+            raise ApiError(422, "INVALID_CATALOG_SCHEDULE", "Выберите ручное, ежедневное или еженедельное обновление.")
+        with self._lock:
+            self._save(self._source, interval, self._last_attempt)
             return self._status()
 
     def refresh(self):
         with self._lock:
             if not self._updating:
-                self._updating, self._error = True, None
-                try:
-                    Thread(target=self._refresh, daemon=True).start()
-                except RuntimeError:
-                    self._updating = False
-                    raise ApiError(503, "OSV_UPDATE_UNAVAILABLE", "Не удалось запустить обновление OSV.") from None
+                self._start_refresh(datetime.now(UTC))
             return self._status()
+
+    def refresh_due(self, now):
+        with self._lock:
+            due = self._next_refresh(now)
+            if not self._updating and due is not None and due <= now:
+                self._start_refresh(now)
+
+    def _start_refresh(self, now):
+        self._save(self._source, self._interval, now.isoformat())
+        self._updating, self._error = True, None
+        try:
+            Thread(target=self._refresh, daemon=True).start()
+        except RuntimeError:
+            self._updating = False
+            self._error = "Не удалось запустить обновление OSV."
+            raise ApiError(503, "OSV_UPDATE_UNAVAILABLE", self._error) from None
 
     def _refresh(self):
         try:
@@ -98,6 +151,6 @@ class CatalogService:
         else:
             with self._lock:
                 self._osv = updated
-                if self._active.source == "osv":
+                if self._source == "osv" or self._active.source == "osv":
                     self._active = updated
                 self._updating = False

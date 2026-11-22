@@ -1,4 +1,7 @@
 import { http, HttpResponse } from 'msw'
+import type { SnapshotRef } from '../api'
+import type { FindingRecord, FindingReview, FindingsOverview } from '../findings/types'
+import type { SnapshotComparison, SnapshotLibraryItem, SnapshotRun } from '../snapshots/types'
 import type { Template } from '../templates/types'
 import { nodeTypes } from '../workflow'
 import type { Branch, ConnectionRef, Workflow, WorkflowDraft, WorkflowDraftResult } from '../workflow'
@@ -35,6 +38,14 @@ function storeWorkflow(workflow: Workflow) {
 }
 const runStorageKey = 'cyber-garden.mock.runs.v2'
 const runs = new Map<string, StoredRun>()
+const reviewsStorageKey = 'cyber-garden.mock.finding-reviews.v1'
+const reviews = new Map<string, FindingReview>()
+try {
+  const cached = globalThis.localStorage?.getItem(reviewsStorageKey)
+  if (cached) for (const [key, review] of JSON.parse(cached) as [string, FindingReview][]) reviews.set(key, review)
+} catch {
+  // Keep reviews available in memory if storage is blocked.
+}
 const templateStorageKey = 'cyber-garden.mock.templates.v2'
 const templates = new Map<string, Template>()
 try {
@@ -59,14 +70,24 @@ function channelConfigured(id: unknown): boolean {
 
 let nextTemplate = 1
 const snapshotStorageKey = 'cyber-garden.mock.snapshots.v2'
-let importedSnapshots: typeof snapshots = []
+const snapshotLabelsKey = 'cyber-garden.mock.snapshot-labels.v1'
+let importedSnapshots: SnapshotRef[] = []
+let snapshotLabels: Record<string, string> = {}
 try {
   const saved = globalThis.localStorage?.getItem(snapshotStorageKey)
-  if (saved) importedSnapshots = JSON.parse(saved) as typeof snapshots
+  if (saved) importedSnapshots = JSON.parse(saved) as SnapshotRef[]
+  const labels = globalThis.localStorage?.getItem(snapshotLabelsKey)
+  if (labels) snapshotLabels = JSON.parse(labels) as Record<string, string>
 } catch {
   // Use the built-in demo snapshots when storage is unavailable.
 }
-const allSnapshots = () => [...snapshots, ...importedSnapshots]
+const allSnapshots = (): SnapshotRef[] => [...snapshots, ...importedSnapshots].map(snapshot => ({
+  ...snapshot, label: snapshotLabels[snapshot.id] ?? snapshot.label,
+}))
+
+const demoDependencies: Readonly<Record<string, string>> = {
+  'main-1': '1.1.0', 'pr-1': '1.0.0', 'pr-2': '1.1.0', 'pr-3': '1.0.0',
+}
 
 let nextWorkflow = 2
 let nextRun = 4
@@ -76,6 +97,14 @@ const patchedSnapshots = new Set<string>()
 
 const configuredBase: string | undefined = import.meta.env.VITE_API_BASE
 const api = (path: string) => `${(configuredBase ?? '/api/v1').replace(/\/+$/, '')}${path}`
+
+const mockCatalog = {
+  source: 'training', analysisVersion: 'demo', osvAvailable: false, customAvailable: false, updating: false,
+  osvUpdatedAt: null as string | null, refreshIntervalHours: 0, nextRefreshAt: null as string | null,
+}
+const mockAi = { mode: 'custom', checking: false, providers: [
+  { id: 'demo', name: 'Демонстрационный AI', model: null, status: 'unknown' },
+] }
 
 function error(status: number, code: string, message: string) {
   return HttpResponse.json({ code, message }, { status })
@@ -236,6 +265,44 @@ function runResponse({ result, readyAt }: StoredRun): Run {
   }
 }
 
+function snapshotRuns(snapshotId: string): SnapshotRun[] {
+  return [...runs.values()].reverse().flatMap(stored => {
+    const run = runResponse(stored)
+    if (run.snapshotId !== snapshotId && run.baseSnapshotId !== snapshotId) return []
+    return [{ id: run.id, workflowId: run.workflowId, createdAt: stored.at, status: run.status,
+      ci: run.ci.status, role: run.snapshotId === snapshotId ? 'current' : 'base' }]
+  })
+}
+
+function completedFindingRuns(workflowId: string) {
+  return [...runs.values()].reverse().filter(run => run.result.workflowId === workflowId &&
+    Date.now() >= run.readyAt && (run.result.ci.status === 'passed' || run.result.ci.status === 'failed'))
+}
+
+function overviewFor(workflowId: string): FindingsOverview {
+  const completed = completedFindingRuns(workflowId)
+  const latest = completed[0]
+  const records = new Map<string, FindingRecord>()
+  for (const run of completed) {
+    for (const finding of run.result.findings) {
+      const record = records.get(finding.id)
+      if (record) {
+        record.firstSeenAt = run.at
+        record.occurrences++
+        continue
+      }
+      records.set(finding.id, {
+        finding, category: finding.category ?? finding.ruleId.split('-')[0],
+        state: run === latest ? 'open' : run.analyzers === latest.analyzers ? 'resolved' : 'unverified',
+        firstSeenAt: run.at, lastSeenAt: run.at, lastSeenRunId: run.result.id, occurrences: 1,
+        recommendation: run.result.recommendations.find(item => item.findingId === finding.id) ?? null,
+        review: reviews.get(`${workflowId}/${finding.id}`) ?? null,
+      })
+    }
+  }
+  return { latestRunId: latest?.result.id ?? null, findings: [...records.values()] }
+}
+
 function scenarioFor(request: Request): RunScenario | undefined {
   const scenario = new URL(request.url).searchParams.get('scenario')
   switch (scenario) {
@@ -249,6 +316,50 @@ function scenarioFor(request: Request): RunScenario | undefined {
 
 export const handlers = [
   http.get(api('/snapshots'), () => HttpResponse.json(allSnapshots())),
+  http.get(api('/snapshots/library'), () => {
+    const library: SnapshotLibraryItem[] = allSnapshots().reverse().map(snapshot => {
+      const history = snapshotRuns(snapshot.id)
+      return { ...snapshot, runCount: history.length, latestRun: history.find(run => run.role === 'current') ?? null }
+    })
+    return HttpResponse.json(library)
+  }),
+  http.get(api('/snapshots/:id/runs'), ({ params }) => {
+    const id = String(params.id)
+    if (!allSnapshots().some(snapshot => snapshot.id === id)) return notFound('Снимок не найден.')
+    return HttpResponse.json(snapshotRuns(id))
+  }),
+  http.get(api('/snapshots/:id/comparison'), ({ params, request }) => {
+    const id = String(params.id)
+    const baseId = new URL(request.url).searchParams.get('againstSnapshotId')
+    if (!baseId || id === baseId) return error(422, 'INVALID_SNAPSHOT_COMPARISON', 'Выберите два разных снимка.')
+    if (![id, baseId].every(key => allSnapshots().some(snapshot => snapshot.id === key))) return notFound('Снимок не найден.')
+    const before = demoDependencies[baseId]
+    const after = demoDependencies[id]
+    if (!before || !after) return error(422, 'DEMO_COMPARISON_UNAVAILABLE', 'Для сравнения загруженных архивов подключите бэкенд.')
+    const comparison: SnapshotComparison = {
+      baseSnapshotId: baseId, snapshotId: id,
+      files: { added: [], modified: before === after ? [] : ['build.gradle.kts'], removed: [] },
+      dependencies: before === after ? [] : [{ module: '.', group: 'demo', artifact: 'sample-library', before: [before], after: [after] }],
+      unresolvedBefore: 0, unresolvedAfter: 0,
+    }
+    return HttpResponse.json(comparison)
+  }),
+  http.post(api('/snapshots/:id/rename'), async ({ params, request }) => {
+    const id = String(params.id)
+    const snapshot = allSnapshots().find(item => item.id === id)
+    if (!snapshot) return notFound('Снимок не найден.')
+    const label = (await readBody(request))?.label
+    if (typeof label !== 'string' || !label.trim() || label.trim().length > 160) {
+      return error(422, 'INVALID_SNAPSHOT_LABEL', 'Укажите имя снимка длиной от 1 до 160 символов.')
+    }
+    snapshotLabels[id] = label.trim()
+    try {
+      globalThis.localStorage?.setItem(snapshotLabelsKey, JSON.stringify(snapshotLabels))
+    } catch {
+      // The new label is available for this page.
+    }
+    return HttpResponse.json({ ...snapshot, label: snapshotLabels[id] })
+  }),
   http.post(api('/snapshots/import'), async ({ request }) => {
     const form = await request.formData().catch(() => undefined)
     const file = form?.get('file')
@@ -258,7 +369,7 @@ export const handlers = [
       return error(413, issue, 'Лимит ZIP — 20 МБ, до 100 МБ после распаковки и до 5000 файлов.')
     }
     if (issue) return error(422, issue, 'ZIP-архив пуст, повреждён или содержит недопустимые файлы.')
-    const snapshot = { id: `upload-${crypto.randomUUID()}`, label: file.name.slice(0, -4) }
+    const snapshot = { id: `upload-${crypto.randomUUID()}`, label: file.name.slice(0, -4), createdAt: new Date().toISOString() }
     importedSnapshots.push(snapshot)
     try {
       globalThis.localStorage?.setItem(snapshotStorageKey, JSON.stringify(importedSnapshots))
@@ -267,7 +378,51 @@ export const handlers = [
     }
     return HttpResponse.json(snapshot, { status: 201 })
   }),
+  http.get(api('/advisory-catalog'), () => HttpResponse.json(mockCatalog)),
+  http.post(api('/advisory-catalog/source'), async ({ request }) => {
+    const source = (await readBody(request))?.source
+    if (source !== 'training' && !(source === 'osv' && mockCatalog.osvAvailable)) {
+      return error(422, 'INVALID_CATALOG_SOURCE', 'Выберите доступный справочник.')
+    }
+    mockCatalog.source = source
+    mockCatalog.analysisVersion = source === 'osv' ? 'demo-osv' : 'demo'
+    return HttpResponse.json(mockCatalog)
+  }),
+  http.post(api('/advisory-catalog/refresh'), () => {
+    mockCatalog.osvAvailable = true
+    mockCatalog.osvUpdatedAt = new Date().toISOString()
+    return HttpResponse.json(mockCatalog, { status: 202 })
+  }),
+  http.post(api('/advisory-catalog/schedule'), async ({ request }) => {
+    const hours = (await readBody(request))?.refreshIntervalHours
+    if (hours !== 0 && hours !== 24 && hours !== 168) return error(422, 'INVALID_CATALOG_SCHEDULE', 'Укажите период обновления.')
+    mockCatalog.refreshIntervalHours = hours
+    mockCatalog.nextRefreshAt = hours ? new Date(Date.now() + hours * 3600000).toISOString() : null
+    return HttpResponse.json(mockCatalog)
+  }),
+  http.get(api('/settings/ai'), () => HttpResponse.json(mockAi)),
+  http.post(api('/settings/ai/test'), () => {
+    mockAi.providers[0].status = 'available'
+    return HttpResponse.json(mockAi, { status: 202 })
+  }),
+  http.get(api('/settings/storage'), () => HttpResponse.json({ databaseBytes: 0, snapshotBytes: 0, runBytes: 0,
+    snapshotCount: allSnapshots().length, runCount: runs.size })),
+  http.get(api('/settings/storage/backup'), () => error(422, 'DEMO_BACKUP_UNAVAILABLE', 'Для резервной копии подключите бэкенд.')),
   http.get(api('/connections'), () => HttpResponse.json([...connections.values()])),
+  http.post(api('/connections/:id/edit'), async ({ params, request }) => {
+    const connection = connections.get(String(params.id))
+    if (!connection) return notFound('Подключение Telegram не найдено.')
+    const body = await readBody(request)
+    const updated = { ...connection, name: typeof body?.name === 'string' ? body.name.trim() : connection.name,
+      configured: typeof body?.configured === 'boolean' ? body.configured : connection.configured }
+    connections.set(updated.id, updated)
+    try { globalThis.localStorage?.setItem(connectionStorageKey, JSON.stringify([...connections.values()])) } catch {
+      // Keep the edit available on this page.
+    }
+    return HttpResponse.json(updated)
+  }),
+  http.post(api('/connections/:id/test'), ({ params }) => channelConfigured(params.id)
+    ? HttpResponse.json({ messageId: 1 }) : error(409, 'CONNECTION_DISABLED', 'Включите подключение перед проверкой.')),
   http.post(api('/connections'), async ({ request }) => {
     const body = await readBody(request)
     if (body?.type !== 'telegram' || typeof body.name !== 'string' || !body.name.trim() ||
@@ -287,6 +442,10 @@ export const handlers = [
     return HttpResponse.json(connection, { status: 201 })
   }),
   http.get(api('/templates'), () => HttpResponse.json([...templates.values()])),
+  http.get(api('/templates/:templateId'), ({ params }) => {
+    const template = templates.get(String(params.templateId))
+    return template ? HttpResponse.json(template) : notFound('Шаблон не найден.')
+  }),
   http.post(api('/templates'), async ({ request }) => {
     const body = await readBody(request)
     const workflow = typeof body?.workflowId === 'string' ? workflows.get(body.workflowId) : undefined
@@ -407,6 +566,37 @@ export const handlers = [
     return HttpResponse.json(
       [...runs.values()].reverse().filter(run => run.result.workflowId === id).map(runResponse),
     )
+  }),
+  http.get(api('/workflows/:workflowId/findings'), ({ params }) => {
+    const workflowId = String(params.workflowId)
+    if (!workflows.has(workflowId)) return notFound('Сценарий не найден.')
+    return HttpResponse.json(overviewFor(workflowId))
+  }),
+  http.post(api('/workflows/:workflowId/findings/:findingId/review'), async ({ params, request }) => {
+    const workflowId = String(params.workflowId)
+    const findingId = String(params.findingId)
+    if (!workflows.has(workflowId)) return notFound('Сценарий не найден.')
+    const body = await readBody(request)
+    const status = body?.status
+    const reason = body?.reason === undefined ? '' : body.reason
+    if ((status !== 'unreviewed' && status !== 'in_progress' && status !== 'false_positive') ||
+      typeof reason !== 'string' || reason.trim().length > 500) {
+      return error(422, 'INVALID_FINDING_REVIEW', 'Проверьте статус и причину.')
+    }
+    if (status === 'false_positive' && !reason.trim()) {
+      return error(422, 'FINDING_REVIEW_REASON_REQUIRED', 'Укажите, почему это ложное срабатывание.')
+    }
+    if (!completedFindingRuns(workflowId).some(run => run.result.findings.some(finding => finding.id === findingId))) {
+      return notFound('Находка не найдена в этом сценарии.')
+    }
+    const review: FindingReview = { findingId, status, reason: reason.trim(), updatedAt: new Date().toISOString() }
+    reviews.set(`${workflowId}/${findingId}`, review)
+    try {
+      globalThis.localStorage?.setItem(reviewsStorageKey, JSON.stringify([...reviews]))
+    } catch {
+      // Keep this review available in memory if storage is blocked.
+    }
+    return HttpResponse.json(review)
   }),
   http.get(api('/workflows/:workflowId/findings/:findingId/history'), ({ params }) => {
     const workflowId = String(params.workflowId)

@@ -4,9 +4,12 @@ from email import policy
 from email.parser import BytesParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import logging
 import os
 from pathlib import Path
 import re
+from shutil import copyfileobj
+from sqlite3 import Error as DatabaseError
 from threading import Condition, Event, Thread
 from urllib.error import URLError
 from urllib.parse import parse_qs, urlsplit
@@ -26,16 +29,20 @@ from .node_templates import generate_node_template, save_node_template
 from .project_import import (
     ArchiveTooLarge, MAX_UPLOAD, ORGANIZER_COMMIT, ORGANIZER_REPOSITORY, read_organizer_project, read_project,
 )
+from .settings import AiDiagnostics
+from .snapshots import save_version, snapshot_ref
 from .store import Store
+from .template_yaml import MAX_TEMPLATE_BYTES, YAML_MEDIA_TYPES, import_template, portable_graph
 
 
 ROOT = Path(__file__).resolve().parents[2]
 EXTERNAL_CI = ROOT / "examples/external-ci"
 PROVIDER = build_provider()
 RUNS = {}
-STORE = None
+STORE: Store
 WORD_API = None
 CATALOG: CatalogService
+AI_DIAGNOSTICS: AiDiagnostics
 
 
 def project(snapshot_id):
@@ -43,21 +50,6 @@ def project(snapshot_id):
     if row is None:
         raise ApiError(422, "SNAPSHOT_REQUIRED", "Выберите загруженный учебный проект.")
     return Snapshot(row["id"], row["files"])
-
-
-def save_snapshot(snapshot, label, *, organizer_catalog=None):
-    row = {"id": snapshot.id, "label": label, "files": snapshot.files}
-    if organizer_catalog is not None:
-        row["organizerCatalog"] = organizer_catalog
-    STORE.put("snapshot", snapshot.id, row)
-    return snapshot_ref(row)
-
-
-def snapshot_ref(row):
-    public = {"id": row["id"], "label": row["label"]}
-    if "organizerCatalog" in row:
-        public["catalogSource"] = "organizer"
-    return public
 
 
 def snapshot_catalog(snapshot_id):
@@ -78,7 +70,7 @@ def import_organizer_snapshot(url):
         parse_catalog(catalog, "organizer")
     except (URLError, OSError) as error:
         raise ApiError(502, "REPOSITORY_UNAVAILABLE", "GitHub не отдал архив. Повторите позже или загрузите ZIP.") from error
-    return save_snapshot(snapshot, "TBagirov/training · проект организаторов", organizer_catalog=catalog)
+    return save_version(STORE, snapshot, "TBagirov/training · проект организаторов", organizer_catalog=catalog)
 
 
 def training_run(variant):
@@ -98,7 +90,7 @@ def training_run(variant):
         snapshot = read_project(training_archive(key), key)
         digest = sha256(json.dumps(snapshot.files, sort_keys=True).encode()).hexdigest()[:16]
         stored = Snapshot(f"training-{key}-{digest}", snapshot.files)
-        snapshots[key] = save_snapshot(stored, name)["id"]
+        snapshots[key] = save_version(STORE, stored, name)["id"]
     workflow_id = "training-replay"
     if STORE.get("workflow", workflow_id) is None:
         save_workflow({"name": "Учебная проверка Kotlin", "graph": graph, "snapshotId": snapshots["before"]}, workflow_id)
@@ -181,6 +173,10 @@ def load_run(key):
 def scheduler(stop):
     while not stop.is_set():
         now = datetime.now(UTC)
+        try:
+            CATALOG.refresh_due(now)
+        except (ApiError, DatabaseError):
+            logging.exception("Could not schedule the OSV update")
         for workflow in STORE.list("workflow"):
             schedule = schedule_value(workflow.get("schedule"))
             if not schedule:
@@ -209,6 +205,23 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.end_headers()
         self.wfile.write(body)
+
+    def send_database_backup(self):
+        origin = self.headers.get("Origin")
+        if (origin or self.headers.get("Sec-Fetch-Site") == "cross-site") and not self.allowed_origin():
+            raise ApiError(403, "ORIGIN_DENIED", "Источник запроса не разрешён.")
+        with STORE.backup() as path, path.open("rb") as stream:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/vnd.sqlite3")
+            self.send_header("Content-Length", str(path.stat().st_size))
+            self.send_header("Content-Disposition", 'attachment; filename="cyber-garden.sqlite3"')
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            try:
+                copyfileobj(stream, self.wfile, length=64 * 1024)
+            except ConnectionError:
+                pass
 
     def send_ci_workflow(self, workflow_id):
         template = (EXTERNAL_CI / "security.yml").read_text(encoding="utf-8")
@@ -277,16 +290,26 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/advisory-catalog":
             self.reply(200, CATALOG.status())
             return
+        if path == "/settings/ai":
+            self.reply(200, AI_DIAGNOSTICS.status())
+            return
+        if path == "/settings/storage":
+            self.reply(200, STORE.storage_usage())
+            return
+        if path == "/settings/storage/backup":
+            self.send_database_backup()
+            return
         if path == "/node-templates":
             self.reply(200, STORE.list("node-template"))
             return
         if (not demo or path == "/connections") and WORD_API.get(path, query, self):
             return
-        collections = {"/runs": "run", "/workflows": "workflow", "/templates": "template", "/snapshots": "snapshot"}
+        if path == "/snapshots":
+            self.reply(200, STORE.snapshot_refs())
+            return
+        collections = {"/runs": "run", "/workflows": "workflow", "/templates": "template"}
         if path in collections:
             rows = STORE.list(collections[path], 30 if path == "/runs" else -1)
-            if path == "/snapshots":
-                rows = [snapshot_ref(row) for row in rows]
             self.reply(200, rows)
             return
         if path.startswith("/runs/"):
@@ -364,7 +387,7 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(raw, bytes):
             raise ValueError("Не удалось прочитать ZIP.")
         snapshot = read_project(raw, uuid4().hex)
-        self.reply(201, save_snapshot(snapshot, label[:160]))
+        self.reply(201, save_version(STORE, snapshot, label[:160]))
 
     def do_POST(self):
         try:
@@ -387,6 +410,16 @@ class Handler(BaseHTTPRequestHandler):
             if not self.path.startswith("/api/v1/"):
                 self.reply(404, {"message": "Маршрут не найден."})
                 return
+            if path == "/templates/import":
+                if self.headers.get_content_type() not in YAML_MEDIA_TYPES:
+                    raise ApiError(415, "TEMPLATE_MEDIA_TYPE", "Отправьте YAML-файл сценария.")
+                try:
+                    imported = import_template(self.read_body(MAX_TEMPLATE_BYTES))
+                except ArchiveTooLarge as error:
+                    raise ApiError(413, "TEMPLATE_TOO_LARGE", "Размер YAML не должен превышать 128 КБ.") from error
+                workflow = save_workflow(imported)
+                self.reply(201, workflow if demo else to_workflow(workflow))
+                return
             if self.headers.get_content_type() != "application/json":
                 raise ValueError("Отправьте JSON.")
             data = json.loads(self.read_body(65536))
@@ -403,6 +436,12 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if path == "/advisory-catalog/source":
                 self.reply(200, CATALOG.select(data.get("source")))
+                return
+            if path == "/advisory-catalog/schedule":
+                self.reply(200, CATALOG.schedule(data.get("refreshIntervalHours")))
+                return
+            if path == "/settings/ai/test":
+                self.reply(202, AI_DIAGNOSTICS.start())
                 return
             if path == "/node-templates/draft":
                 self.reply(200, generate_node_template(data.get("prompt"), PROVIDER))
@@ -427,9 +466,7 @@ class Handler(BaseHTTPRequestHandler):
                 description = data.get("description", "")
                 if not workflow or not isinstance(description, str) or len(description) > 500:
                     raise ValueError("Сохраните сценарий и задайте описание до 500 символов.")
-                graph = workflow["graph"]
-                graph["nodes"] = [{k: v for k, v in node.items() if k not in {"schedule", "channelId"}}
-                                  for node in graph["nodes"]]
+                graph = portable_graph(workflow["graph"])
                 name = data.get("name", workflow["name"])
                 if not isinstance(name, str) or not 0 < len(name.strip()) <= 100:
                     raise ValueError("Укажите название шаблона.")
@@ -441,11 +478,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not template:
                     self.reply(404, {"message": "Шаблон не найден."})
                 else:
-                    graph = template["graph"]
-                    if not demo:
-                        for node in graph["nodes"]:
-                            if node["type"] == "telegram":
-                                node["channelId"] = None
+                    graph = portable_graph(template["graph"])
                     copied = save_workflow({"name": template["name"], "graph": graph})
                     if not demo:
                         copied = to_workflow(copied)
@@ -473,10 +506,11 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    global STORE, CATALOG, WORD_API
+    global STORE, CATALOG, WORD_API, AI_DIAGNOSTICS
     STORE = Store(ROOT)
     default = ROOT / "docs/training-advisories.json"
-    CATALOG = CatalogService(default, Path(os.environ.get("GARDEN_ADVISORIES", default)))
+    CATALOG = CatalogService(default, Path(os.environ.get("GARDEN_ADVISORIES", default)), store=STORE)
+    AI_DIAGNOSTICS = AiDiagnostics(PROVIDER)
     WORD_API = WordApi(STORE, load_run, save_workflow, launch, project, condition, snapshot_catalog)
     for row in STORE.list("run"):
         if row["status"] in {"queued", "running"}:

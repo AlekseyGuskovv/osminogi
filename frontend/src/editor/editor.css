@@ -1,8 +1,6 @@
 .garden-shell { display: grid; grid-template-columns: 116px minmax(0, 1fr); min-height: 100dvh; }
 .garden { min-width: 0; }
 .garden-rail { background: #10181c; border-right: 1px solid var(--border); padding: 19px 9px; position: sticky; top: 0; height: 100dvh; }
-.garden-brand { display: flex; align-items: center; gap: 7px; margin: 0 5px 30px; color: var(--text); text-decoration: none; font-size: 13px; line-height: 1.12; }
-.garden-brand > span { display: grid; place-items: center; width: 33px; height: 33px; border-radius: 9px; background: #20352e; color: var(--accent); flex-shrink: 0; }
 .garden-rail nav { display: grid; gap: 5px; }
 .garden-rail nav a { display: grid; justify-items: center; gap: 4px; min-height: 53px; padding: 8px 3px 6px; color: var(--muted); text-decoration: none; font-size: 11px; border: 1px solid transparent; border-radius: 8px; }
 .garden-rail nav a:hover { background: var(--panel); color: var(--text); }
@@ -199,7 +197,6 @@
 .garden-connection-picker details, .garden-connection-picker form { margin-top: 8px; }
 @media (max-width: 1350px) {
   .garden-shell { grid-template-columns: 78px minmax(0,1fr); }
-  .garden-brand { justify-content: center; }.garden-brand b { display: none; }
   .garden-rail nav a { font-size: 9px; }
   .garden-workspace { grid-template-columns: 145px minmax(0,1fr) 194px; }
 }
@@ -212,7 +209,7 @@
 @media (max-width: 660px) {
   .garden-shell { grid-template-columns: minmax(0,1fr); }
   .garden-rail { z-index: 7; position: static; height: auto; display: flex; align-items: center; gap: 12px; padding: 5px 10px; border-right: 0; border-bottom: 1px solid var(--border); }
-  .garden-brand { margin: 0; }.garden-rail nav { display: flex; }
+  .garden-rail nav { display: flex; }
   .garden-rail nav a { min-height: 35px; padding: 4px 5px; }
   .garden-heading { flex-wrap: wrap; padding: 10px 12px; }.garden-toolbar { padding: 8px 12px; }
   .garden-workspace { grid-template-columns: minmax(0,1fr); margin-inline: 9px; }
@@ -257,6 +254,9 @@
 .garden-template-empty p { margin: 0 auto 19px; max-width: 400px; color: var(--muted); }
 .garden-dialog .garden-template-form { border: 0; padding: 0; max-width: none; }
 .garden-template-dialog-actions { display: flex; gap: 8px; justify-content: end; padding-top: 9px; border-top: 1px solid var(--border); }
+.garden-template-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.garden-template-actions a { color: var(--info); }
+.garden-template-link { display: grid; gap: 5px; margin: 12px 0; }
 .garden-template-grid { grid-template-columns: repeat(auto-fill,minmax(min(276px,100%),1fr)); }
 .garden-template-grid .garden-finding { display: grid; justify-items: start; grid-template-rows: auto auto 1fr auto auto; min-height: 175px; }
 .garden-run-metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; margin: 0 0 16px; }

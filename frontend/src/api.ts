@@ -48,7 +48,13 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
   })
 }
 
-export type SnapshotRef = { id: string; label: string; catalogSource?: 'organizer' }
+export type SnapshotRef = {
+  id: string
+  label: string
+  catalogSource?: 'organizer'
+  createdAt?: string | null
+  fileCount?: number
+}
 
 export function apiUrl(path: string) {
   const configuredBase: string | undefined = import.meta.env?.VITE_API_BASE
@@ -59,6 +65,14 @@ export function importSnapshot(file: File): Promise<SnapshotRef> {
   const body = new FormData()
   body.append('file', file)
   return requestJson<SnapshotRef>('/snapshots/import', { method: 'POST', body })
+}
+
+export function importTemplateYaml<T>(file: File): Promise<T> {
+  return requestJson<T>('/templates/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/yaml' },
+    body: file,
+  })
 }
 
 const postErrorMessages: Partial<Record<number, string>> = {

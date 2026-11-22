@@ -25,7 +25,12 @@
   <div class="row"><label for="zip">Загрузить учебный ZIP</label><input id="zip" type="file" accept=".zip,application/zip"><button id="upload">Загрузить</button></div>
   <div class="row"><label>Проект<select id="snapshot"></select></label><label>База для сравнения<select id="base"></select></label></div>
   <div class="row"><label>Название сценария<input id="workflowName" value="Проверка"></label><button id="saveWorkflow">Сохранить сценарий</button><button id="downloadYaml">Получить YAML</button><label>Сохранённые<select id="workflows"></select></label></div>
-  <div class="row"><button id="publish">Опубликовать шаблон</button><label>Шаблоны<select id="templates"></select></label><button id="copyTemplate">Создать копию</button></div>
+  <div class="row">
+    <button id="publish">Опубликовать шаблон</button><label>Шаблоны<select id="templates"></select></label>
+    <button id="copyTemplate">Создать копию</button><button id="exportTemplate">Скачать YAML</button>
+    <button id="importTemplate">Импортировать YAML</button><button id="shareTemplate">Поделиться ссылкой</button>
+    <input id="templateFile" type="file" accept=".yml,.yaml,application/yaml,text/yaml" hidden>
+  </div>
 </section>
 <section class="panel prompt" aria-labelledby="catalogTitle">
   <h2 id="catalogTitle">Справочник уязвимостей</h2>
@@ -48,6 +53,17 @@
 <section class="panel results" aria-labelledby="resultsTitle"><div class="bar"><h2 id="resultsTitle">Результаты проверки</h2><span id="ci"></span></div><div class="results-body" id="results"></div></section>
 </main>
 <dialog id="detail"><article id="detailBody"></article><form method="dialog"><button>Закрыть</button></form></dialog>
+<dialog id="runOutcome" aria-labelledby="runOutcomeTitle" aria-describedby="runOutcomeSummary">
+  <h2 id="runOutcomeTitle"></h2><p id="runOutcomeSummary"></p><ul id="runOutcomeIssues" hidden></ul>
+  <form class="row" method="dialog"><button value="results">К результатам</button><button>Закрыть</button></form>
+</dialog>
+<dialog id="templateShare" aria-labelledby="templateShareTitle">
+  <article><h2 id="templateShareTitle">Поделиться шаблоном</h2>
+    <p>Получателю нужен доступ к этому экземпляру Cyber Garden.</p>
+    <label>Ссылка на шаблон<input id="templateShareLink" readonly></label>
+    <form method="dialog"><button>Закрыть</button></form>
+  </article>
+</dialog>
 <dialog id="nodeCatalog" aria-labelledby="nodeCatalogTitle">
   <h2 id="nodeCatalogTitle">Каталог нод</h2>
   <label>Сохранённые ноды<select id="savedNodes"></select></label>
@@ -454,7 +470,7 @@ function drawControls() {
   $('version').textContent = 'Результаты реальных запусков';
   $('run').textContent = busy?'Выполняется…':'▶ Запустить проверку';
   $('run').disabled = busy || !state.snapshotId;
-  for (const id of ['zip','upload','snapshot','base','workflowName','saveWorkflow','downloadYaml','workflows','publish','templates','copyTemplate']) $(id).disabled = busy;
+  for (const id of ['zip','upload','snapshot','base','workflowName','saveWorkflow','downloadYaml','workflows','publish','templates','copyTemplate','exportTemplate','importTemplate','shareTemplate']) $(id).disabled = busy;
   for (const button of [...$('palette').querySelectorAll('button'),...$('promptForm').querySelectorAll('button')]) button.disabled = busy;
 }
 function watchRun(id) {
@@ -516,6 +532,45 @@ function runTechnicalErrors(entry) {
   if (entry.ci==='error' && !errors.length) errors.push({stage:'analysis',message:'Проверка завершилась с технической ошибкой.'});
   return errors;
 }
+const runOutcomeDialog = document.getElementById('runOutcome');
+function showRunOutcome(entry) {
+  const errors = runTechnicalErrors(entry);
+  const critical = entry.found.filter(item=>item.severity==='critical');
+  let title, summary;
+  if (entry.ci==='error') {
+    title = 'Проверка завершилась с ошибкой';
+    summary = 'Не удалось завершить выполнение сценария.';
+  } else if (entry.ci==='failed') {
+    title = 'Проверка не пройдена';
+    summary = 'Найдены критические риски.';
+  } else if (entry.ci==='unchecked') {
+    title = 'Нет результата анализа';
+    summary = 'Запустите сценарий с блоком анализа.';
+  } else if (errors.length) {
+    title = 'Анализ пройден с замечаниями';
+    summary = 'Некоторые шаги завершились ошибкой.';
+  } else {
+    title = 'Проверка пройдена';
+    summary = entry.found.length ? 'Критических рисков нет. Находок: '+entry.found.length+'.' : 'Находок нет.';
+  }
+  $('runOutcomeTitle').textContent = title;
+  $('runOutcomeSummary').textContent = summary;
+  const details = $('runOutcomeIssues');
+  const findings = critical.map(item=>item.title+' · '+item.file+':'+item.line);
+  const messages = errors.map(error=>error.message);
+  const issues = entry.ci==='failed' ? [...findings,...messages] : [...messages,...findings];
+  const visible = issues.slice(0,3);
+  if (issues.length > 3) visible.push('Ещё '+(issues.length-3)+' в результатах.');
+  details.replaceChildren(...visible.map(issue=>{
+    const item = document.createElement('li'); item.textContent = issue; return item;
+  }));
+  details.hidden = !issues.length;
+  runOutcomeDialog.returnValue = '';
+  runOutcomeDialog.showModal();
+}
+runOutcomeDialog.onclose = event => {
+  if (event.currentTarget.returnValue==='results') $('results').scrollIntoView({block:'start'});
+};
 async function run() {
   if (busy || !state.snapshotId) return;
   try { validate(); } catch (error) { message(error.message,true); return; }
@@ -533,6 +588,7 @@ async function run() {
     if (result.ci==='error') message('Проверка не завершена. Подробности в разделе «Технические сбои».',true);
     else if (runTechnicalErrors(entry).length) message('Анализ завершён. Подробности в разделе «Технические сбои».',true);
     else message('Проверка завершена. Результаты под сценарием.');
+    showRunOutcome(entry);
   } catch (error) {
     message(error.message,true);
   } finally {
@@ -613,6 +669,42 @@ $('copyTemplate').onclick = () => action(async()=>{
   openWorkflow(await api('/templates/'+$('templates').value+'/copy',{}));
   await refreshLists();message('Копия открыта. Выберите учебный ZIP.');
 });
+$('exportTemplate').onclick = () => {
+  const id = $('templates').value;
+  if (!id) { message('Выберите шаблон.', true); return; }
+  const link = document.createElement('a');
+  link.href = '/api/v1/templates/' + encodeURIComponent(id) + '/yaml';
+  link.download = 'cyber-garden-template.yml';
+  link.click();
+};
+const templateFile = $('templateFile');
+$('importTemplate').onclick = () => templateFile.click();
+templateFile.onchange = () => {
+  const file = templateFile.files[0];
+  templateFile.value = '';
+  if (!file) return;
+  void action(async () => {
+    const response = await fetch('/api/v1/templates/import?view=demo', {
+      method:'POST', headers:{'Content-Type':'application/yaml'}, body:file
+    });
+    const result = await response.json();
+    if (!response.ok) throw Error(result.message || 'Не удалось импортировать шаблон.');
+    openWorkflow(result);
+    await refreshLists();
+    message('Копия открыта. Выберите учебный ZIP.');
+  });
+};
+$('shareTemplate').onclick = () => {
+  const id = $('templates').value;
+  if (!id) { message('Выберите шаблон.', true); return; }
+  const url = new URL(window.location.href);
+  url.search = new URLSearchParams({view:'templates', template:id}).toString();
+  url.hash = '';
+  const input = $('templateShareLink');
+  input.value = url.href;
+  $('templateShare').showModal();
+  input.select();
+};
 async function refreshHistory() {
   if (busy) return;
   const rows=(await api('/runs')).filter(row=>!['queued','running'].includes(row.status));
@@ -675,6 +767,15 @@ api('/connections').then(items=>{ telegramConnections = items; drawInspector(); 
 refreshLists().then(()=>{
   const saved=state.workflowId && $('workflows').selectedOptions[0];
   if (saved) $('workflowName').value=saved.textContent;
+  const shared = new URLSearchParams(window.location.search).get('template');
+  if (shared) {
+    const select = $('templates');
+    const template = Array.from(select.options).find(option=>option.value===shared);
+    if (template) {
+      select.value = shared;
+      message('Шаблон «'+template.textContent+'» выбран. Нажмите «Создать копию», чтобы открыть его в редакторе.');
+    } else message('Шаблон по ссылке не найден.', true);
+  }
   drawControls();
 }).catch(error=>message(error.message,true));
 refreshHistory().catch(error=>message(error.message,true));

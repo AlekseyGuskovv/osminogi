@@ -1,3 +1,5 @@
+import { PrismGlassCard } from '../ui/PrismGlassCard'
+import { PrismIcon } from '../ui/Icon'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ApiError, getJson } from '../api'
 import { getHighlight } from '../runs/ci'
@@ -159,16 +161,16 @@ function Evolution({ before, after, diff, onFocus }: { before: Run; after: Run; 
       {endpoint('after', 'После', after)}
     </div>
     <dl className="evolution-metrics" aria-label="Показатели сравнения">
-      <div><dt>Актуальные</dt><dd><b>{before.findings.length}</b> <span>→</span> <b>{after.findings.length}</b></dd></div>
-      <div><dt>Критические</dt><dd><b>{criticalBefore}</b> <span>→</span> <b>{criticalAfter}</b></dd></div>
+      <div><dt>Актуальные</dt><dd><b>{before.findings.length}</b> <span><PrismIcon name="arrow" size={15} /></span> <b>{after.findings.length}</b></dd></div>
+      <div><dt>Критические</dt><dd><b>{criticalBefore}</b> <span><PrismIcon name="arrow" size={15} /></span> <b>{criticalAfter}</b></dd></div>
       <div><dt>Устранено</dt><dd>{resolved.length}</dd></div>
       <div><dt>Осталось</dt><dd>{after.findings.length}</dd></div>
     </dl>
-    <div className="evolution-outcome" data-ci={active.ci.status}
+    <PrismGlassCard variant="featured" accent="mint" className="evolution-outcome" data-ci={active.ci.status}
       data-regression={regression} aria-live="polite">
-      <span className="evolution-result-icon" aria-hidden="true">{active.ci.status === 'passed' && !regression ? '✓' : active.ci.status === 'pending' ? '…' : '!'}</span>
+      <span className="evolution-result-icon" aria-hidden="true"><PrismIcon name={active.ci.status === 'passed' && !regression ? 'check' : active.ci.status === 'pending' ? 'clock' : 'alert'} size={16} /></span>
       <div className="evolution-result-copy" key={phase}><strong>{result.title}</strong><p>{result.detail}</p></div>
-    </div>
+    </PrismGlassCard>
     <div className="evolution-findings" ref={list}>
       <h3 className="evolution-active-heading">Актуальные находки <span>{active.findings.length}</span></h3>
       <h3 className="evolution-resolved-heading">Устранено <span>{phase === 'after' ? resolved.length : '—'}</span></h3>

@@ -54,7 +54,8 @@ export function TelegramConnectionPicker({ value, disabled, onSelect }: Props) {
     <label>Канал Telegram<select className="garden-connection-select" value={value} disabled={pending || disabled}
       onChange={event => onSelect(event.target.value)}>
       <option value="">Выберите канал</option>
-      {value && !connections?.some(connection => connection.id === value) && <option value={value}>{value}</option>}
+      {value && !connections?.some(connection => connection.id === value && connection.configured) &&
+        <option value={value}>{connections?.find(connection => connection.id === value)?.name ?? value} · недоступно</option>}
       {connections?.filter(connection => connection.configured).map(connection =>
         <option key={connection.id} value={connection.id}>{connection.name}</option>)}
     </select></label>

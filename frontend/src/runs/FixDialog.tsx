@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react'
 import { ApiError, postJson } from '../api'
 import { runsUrl } from './navigation'
-import { useStartRun } from './useRun'
+import { useRunStatus, useStartRun } from './useRun'
+import { RunOutcomeDialog } from './RunOutcomeDialog'
 import type { Run } from './types'
 
 type FixPreview = { previewId: string; path: string; before: string; after: string }
@@ -13,6 +14,7 @@ export function FixDialog({ run, findingId }: { run: Run; findingId: string }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const { start, starting, accepted } = useStartRun()
+  const view = useRunStatus(accepted?.id)
   const path = `/runs/${encodeURIComponent(run.id)}`
 
   async function open() {
@@ -73,8 +75,11 @@ export function FixDialog({ run, findingId }: { run: Run; findingId: string }) {
       </>}
       {snapshotId && <p role="status" data-fixed-snapshot={snapshotId}>Создан снимок {snapshotId}.</p>}
       {snapshotId && !accepted && <button disabled={starting} onClick={() => void rerun()}>Проверить новый снимок</button>}
-      {accepted && <p role="status"><a href={runsUrl(run.workflowId, accepted.id)}>Открыть запуск {accepted.id}</a> · В очереди</p>}
+      {accepted && <p role="status"><a href={runsUrl(run.workflowId, accepted.id, { showOutcome: !view?.result })}>
+        Открыть запуск {accepted.id}</a> · {view?.result ? 'Завершён' : view?.status === 'running' ? 'Выполняется' : 'В очереди'}</p>}
       <form className="garden-dialog-close" method="dialog"><button disabled={busy || starting}>Закрыть</button></form>
     </dialog>
+    {view?.result && <RunOutcomeDialog key={view.result.id} run={view.result}
+      reportHref={runsUrl(run.workflowId, view.result.id)} onBeforeOpen={() => dialog.current?.close()} />}
   </>
 }

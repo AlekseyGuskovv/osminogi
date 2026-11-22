@@ -73,9 +73,14 @@ async function evaluate(port, test, path = "/", reducedMotion = false) {
     })
     await call('Runtime.addBinding', { name: 'dispatchDrag' })
     await call('Runtime.addBinding', { name: 'dispatchClick' })
+    await call('Runtime.addBinding', { name: 'insertText' })
     socket.addEventListener('message', async message => {
       const event = JSON.parse(message.data)
       if (event.method !== 'Runtime.bindingCalled') return
+      if (event.params.name === 'insertText') {
+        await call('Input.insertText', { text: event.params.payload })
+        return
+      }
       const { x, y } = JSON.parse(event.params.payload)
       if (event.params.name === 'dispatchClick') {
         await call('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y })
@@ -108,12 +113,96 @@ async function evaluate(port, test, path = "/", reducedMotion = false) {
 
 let debug
 try {
-  for (const [port, enabled] of [[4175, 'true'], [4176, 'false']]) {
+  for (const [port, enabled] of [[4175, 'true'], [4176, 'false'], [4177, 'true']]) {
     start(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], { ...process.env, VITE_USE_MOCKS: enabled, VITE_API_BASE: '/api/v1/' })
     await until(async () => (await fetch('http://127.0.0.1:' + port + '/')).ok)
   }
   start(chrome, ['--headless', '--window-size=1440,1000', '--no-first-run', '--no-default-browser-check', '--disable-background-networking', '--disable-component-update', '--disable-sync', '--remote-debugging-port=0', '--user-data-dir=' + join(root, 'chrome-v2'), 'about:blank'])
   debug = await until(async () => (await readFile(join(root, 'chrome-v2', 'DevToolsActivePort'), 'utf8')).split('\n')[0])
+
+  await evaluate(4177, async () => {
+    async function until(test) {
+      for (let i = 0; i < 150; i++) {
+        const value = test()
+        if (value) return value
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      throw new Error('Focus Canvas did not reach the expected state')
+    }
+    const ring = document.querySelector('.garden-theme-picker select')
+    const canvas = await until(() => document.querySelector('.react-flow'))
+    const viewport = await until(() => canvas.querySelector('.react-flow__viewport'))
+    const gate = await until(() => canvas.querySelector('[data-id="gate"]'))
+    gate.querySelector('.garden-node').click()
+    const inspector = document.querySelector('#workflow-inspector')
+    const palette = document.querySelector('#workflow-palette')
+    const toggle = document.querySelector('.garden-focus-toggle')
+    const threshold = await until(() => inspector.querySelector('select:has(option[value="critical"])'))
+    threshold.value = 'high'
+    threshold.dispatchEvent(new Event('change', { bubbles: true }))
+    await until(() => document.querySelector('.garden-save-state[data-dirty="true"]'))
+    canvas.querySelector('.react-flow__controls-zoomin').click()
+    await new Promise(resolve => setTimeout(resolve, 350))
+    const width = canvas.getBoundingClientRect().width
+    const transform = viewport.style.transform
+    const nodePosition = gate.style.transform
+    const requestCount = () => performance.getEntriesByType('resource').filter(entry => entry.name.includes('/api/v1/')).length
+    const beforeFocusRequests = requestCount()
+    const key = (target, value) => {
+      const event = new KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true })
+      target.dispatchEvent(event)
+      return event.defaultPrevented
+    }
+    if (key(threshold, 'f') || toggle.getAttribute('aria-pressed') !== 'false') throw new Error('Editable field triggered Focus Canvas')
+    toggle.click()
+    await until(() => toggle.getAttribute('aria-pressed') === 'true' && canvas.getBoundingClientRect().width > width + 150)
+    if (!inspector.inert || !palette.inert || !toggle.getAttribute('aria-controls') ||
+        !canvas.querySelector('[aria-label="Выйти из режима фокуса"]')) throw new Error('Focus controls are not accessible')
+    for (const theme of ['prism-light', 'dark']) {
+      ring.value = theme
+      ring.dispatchEvent(new Event('change', { bubbles: true }))
+      await new Promise(resolve => setTimeout(resolve, 320))
+      if (toggle.getAttribute('aria-pressed') !== 'true' || canvas !== document.querySelector('.react-flow') ||
+          viewport.style.transform !== transform || gate.style.transform !== nodePosition || !gate.classList.contains('selected')) {
+        throw new Error('Theme switch changed Focus Canvas, camera or selection')
+      }
+    }
+    const dialog = document.createElement('dialog')
+    document.body.append(dialog)
+    dialog.showModal()
+    if (key(dialog, 'Escape') || toggle.getAttribute('aria-pressed') !== 'true') throw new Error('Focus hotkey interfered with a modal')
+    dialog.close()
+    dialog.remove()
+    if (!key(toggle, 'Escape')) throw new Error('Escape did not exit Focus Canvas')
+    await until(() => toggle.getAttribute('aria-pressed') === 'false' && Math.abs(canvas.getBoundingClientRect().width - width) < 1)
+    if (inspector !== document.querySelector('#workflow-inspector') || inspector.inert || palette.inert ||
+        threshold.value !== 'high' || viewport.style.transform !== transform) throw new Error('Editor state was lost leaving Focus Canvas')
+    key(toggle, 'f')
+    await until(() => toggle.getAttribute('aria-pressed') === 'true')
+    canvas.querySelector('[aria-label="Выйти из режима фокуса"]').click()
+    await until(() => toggle.getAttribute('aria-pressed') === 'false')
+    if (document.activeElement !== toggle) throw new Error('Focus was not restored to the trigger')
+    if (beforeFocusRequests !== requestCount()) throw new Error('Focus Canvas repeated API requests')
+    toggle.click()
+    const save = [...document.querySelectorAll('.garden-actions button')].find(button => button.textContent === 'Сохранить')
+    save.click()
+    const toast = await until(() => document.querySelector('.prism-toast:not([hidden]) [role="status"]'))
+    if (!toast.textContent.includes('Сохранено')) throw new Error('Workflow did not save in Focus Canvas')
+    toast.parentElement.querySelector('[aria-label="Закрыть уведомление"]').click()
+    if (!toast.parentElement.hidden) await until(() => toast.parentElement.hidden)
+    const snapshot = document.querySelector('.garden-snapshot-select')
+    snapshot.value = 'pr-1'
+    snapshot.dispatchEvent(new Event('change', { bubbles: true }))
+    await until(() => document.querySelector('.garden-actions .garden-primary:not(:disabled)')).then(button => button.click())
+    const hologram = await until(() => canvas.querySelector('.hologram[data-phase="running"]'))
+    const playbackTransform = viewport.style.transform
+    toggle.click()
+    await until(() => toggle.getAttribute('aria-pressed') === 'false')
+    if (!hologram.isConnected || !canvas.isConnected || viewport.style.transform !== playbackTransform) {
+      throw new Error('Focus Canvas interrupted active playback')
+    }
+    return 'Focus Canvas: camera, node, unsaved edit, theme, dialog, keyboard, save, toast and active playback retained'
+  }, '/?workflow=wf-1')
 
   for (const [id, branch, status, reason] of [
     ['run-1', 'YES', 'FAILED', 'CRITICAL_FOUND'],
@@ -204,7 +293,9 @@ try {
     await waitFor(() => document.querySelectorAll('.react-flow__node').length === 8)
     await waitFor(() => document.querySelectorAll('.react-flow__edge').length === 7)
     const palette = document.querySelector('[aria-label="Палитра"]')
-    assert(palette.querySelectorAll('button').length === 8, 'Eight palette items')
+    const { nodeTypes } = await import('/src/workflow.ts')
+    assert([...palette.querySelectorAll('[data-block-type]')].map(item => item.dataset.blockType).sort().join() ===
+      [...nodeTypes].sort().join(), 'Palette contains every workflow node type')
     const condition = document.querySelector('.react-flow__node[data-id="gate"]')
     condition.querySelector('.garden-node').click()
     assert(condition.querySelectorAll('.source').length === 2, 'Two condition outputs')
@@ -257,7 +348,7 @@ try {
     const workflow = await getJson('/workflows/wf-1')
     const gate = workflow.nodes.find(node => node.id === 'gate')
     assert(gate.x !== 430, 'Drag coordinates saved to API')
-    assert(gate.settings.value === 'high', 'Condition form updates saved threshold')
+    assert(gate.settings.rules?.[0]?.value === 'high', 'Condition form updates saved threshold')
     assert(workflow.schedule?.timezone === 'Europe/Moscow', 'Schedule form updates saved workflow')
     assert(workflow.nodes.find(node => node.id === 'tg').settings.channelId === 'team-demo', 'Telegram channel remains in graph')
     const runButton = buttons.find(button => button.textContent.includes('Запустить'))
@@ -374,7 +465,7 @@ try {
     const saved = await getJson('/workflows/wf-1')
     if (saved.revision !== 4 || !saved.nodes.some(node => node.id === 'secrets-1') ||
       saved.nodes.some(node => node.id === 'secrets-2') ||
-      saved.nodes.find(node => node.id === 'gate')?.settings.value !== 'high') {
+      saved.nodes.find(node => node.id === 'gate')?.settings.rules?.[0]?.value !== 'high') {
       throw new Error('Stored workflow was not restored')
     }
     for (let attempt = 0; attempt < 80 && !document.querySelector('.react-flow__node'); attempt++) {
@@ -604,10 +695,13 @@ try {
     const open = await waitFor(() => button('AI-черновик'))
     open.click()
     const input = document.querySelector('dialog textarea')
-    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, 'Найди секреты и объясни риски')
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    await waitFor(() => !button('Сгенерировать черновик')?.disabled)
-    document.querySelector('.garden-draft-form').requestSubmit()
+    input.focus()
+    globalThis.insertText('Найди секреты и объясни риски')
+    const generate = await waitFor(() => {
+      const submit = button('Сгенерировать черновик')
+      return submit && !submit.disabled && submit
+    })
+    generate.click()
     const accept = await waitFor(() => button('Открыть в редакторе'))
     accept.click()
     await waitFor(() => location.search === '?workflow=new' && document.querySelector('h1').textContent === 'Черновик проверки проекта')
@@ -623,8 +717,8 @@ try {
     button('Сохранить').click()
     await waitFor(() => location.search === '?workflow=wf-4')
     const saved = await getJson('/workflows/wf-4')
-    if (saved.nodes.find(node => node.id === 'gate').settings.value !== 'high') throw new Error('Draft edits lost on save')
-    button('▷ Запустить').click()
+    if (saved.nodes.find(node => node.id === 'gate').settings.rules?.[0]?.value !== 'high') throw new Error('Draft edits lost on save')
+    button('Запустить').click()
     await waitFor(() => document.querySelector('[data-run-status="succeeded"]'))
     if (!document.querySelector('[data-ci-status="passed"]')) throw new Error('Draft run did not pass')
     return 'AI draft: generated, edited, explicitly saved, and ran to green CI'
@@ -727,7 +821,7 @@ try {
     if (form.elements.token.value !== '') throw new Error('Token input not cleared')
     const save = [...document.querySelectorAll('.garden-actions button')].find(item => item.textContent === 'Сохранить')
     save.click()
-    await waitFor(() => document.querySelector('.garden-notice[role="status"]')?.textContent.includes('Сохранено'))
+    await waitFor(() => document.querySelector('.prism-toast [role="status"]')?.textContent.includes('Сохранено'))
     const { getJson, postJson } = await import('/src/api.ts')
     const [workflow, connections] = await Promise.all([getJson('/workflows/wf-1'), getJson('/connections')])
     const settings = workflow.nodes.find(item => item.id === 'tg').settings
@@ -821,10 +915,13 @@ try {
     const open = await waitFor(() => button('AI-черновик'))
     open.click()
     const prompt = document.querySelector('dialog textarea')
-    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(prompt, 'Проверяй проект каждый день в 08:30 и отправляй отчёт на email')
-    prompt.dispatchEvent(new Event('input', { bubbles: true }))
-    await waitFor(() => !button('Сгенерировать черновик')?.disabled)
-    document.querySelector('.garden-draft-form').requestSubmit()
+    prompt.focus()
+    globalThis.insertText('Проверяй проект каждый день в 08:30 и отправляй отчёт на email')
+    const generate = await waitFor(() => {
+      const submit = button('Сгенерировать черновик')
+      return submit && !submit.disabled && submit
+    })
+    generate.click()
     await waitFor(() => document.querySelector('dialog .garden-draft-warnings')?.textContent.includes('Доступен Telegram'))
     button('Открыть в редакторе').click()
     const warnings = await waitFor(() => document.querySelector('.garden-draft-notice'))
@@ -951,9 +1048,9 @@ try {
       if (canvas.querySelectorAll('[data-ci-highlight]').length !== 2) throw new Error('Expected analyzer and condition')
       find(panel, 'Открыть находку').click()
       await until(() => panel.querySelector('[data-finding-id="F-key"]'))
-      find(panel, 'Далее').click()
-      await until(() => panel.textContent.includes('Исправляем уязвимость'))
-      find(panel, 'Далее').click()
+      find(panel.querySelector(':scope > .replay-controls'), 'Далее').click()
+      await until(() => panel.textContent.includes('Учебное исправление'))
+      find(panel.querySelector(':scope > .replay-controls'), 'Далее').click()
       await until(() => panel.querySelector('.replay-resolved [data-finding-id="F-key"]'))
       const compare = panel.querySelector('[aria-label="Машина времени безопасности"]')
       find(compare, 'До').click()
@@ -962,8 +1059,8 @@ try {
       find(compare, 'После').click()
       await until(() => compare.querySelector('[data-replay-phase="after"] .replay-resolved [data-finding-id="F-key"]'))
       await until(() => canvas.querySelector('[data-id="gate:no"].garden-ci-edge'))
-      find(panel, 'Назад').click()
-      await until(() => panel.textContent.includes('Исправляем уязвимость'))
+      find(panel.querySelector(':scope > .replay-controls'), 'Назад').click()
+      await until(() => panel.textContent.includes('Учебное исправление'))
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
       await until(() => !document.querySelector('.replay-presentation') && view() === camera)
       if (writes.length || !graph.every(element => element.isConnected)) throw new Error('Slideshow modified data or remounted the graph')
@@ -1100,7 +1197,7 @@ try {
         }
       } else if (beam.isConnected) throw new Error('Failed activation remained visible')
     }
-    if (colors.size !== 5) throw new Error('Scanner did not inherit the existing accents')
+    if (colors.size !== 5) throw new Error('Hologram did not inherit the existing accents')
     return 'Holographic Activation: all eight node types, all five accents, queued/skipped and succeeded/failed'
   }, '/?workflow=wf-1')
 
@@ -1115,7 +1212,21 @@ try {
       throw new Error('Time Machine did not reach the expected state')
     }
     const root = await until(() => document.querySelector('.evolution'))
-    const track = await until(() => root.querySelector('.evolution-track'))
+    const [before, after] = await until(() => {
+      const controls = root.querySelectorAll('.evolution-select select')
+      return controls.length === 2 && controls
+    })
+    const choose = (select, id) => {
+      select.value = id
+      select.dispatchEvent(new Event('change', { bubbles: true }))
+    }
+    choose(before, 'run-1')
+    await until(() => before.value === 'run-1')
+    choose(after, 'run-2')
+    const track = await until(() => {
+      const candidate = root.querySelector('.evolution-track')
+      return candidate?.textContent.includes('run-1') && candidate?.textContent.includes('run-2') && candidate
+    })
     const press = phase => [...track.querySelectorAll('button')].find(button => button.textContent === phase).click()
     const card = id => root.querySelector(`[data-evolution-card="${id}"]`)
     const link = () => new URL(root.querySelector('.evolution-workflow a').href)
@@ -1130,7 +1241,7 @@ try {
       if (![...track.querySelectorAll('[data-ci]')].map(element => element.dataset.ci).join(',').includes('failed,passed')) {
         throw new Error('Expected historical CI failed and passed')
       }
-      const metrics = [...root.querySelectorAll('.evolution-metrics dd')].map(element => element.textContent)
+      const metrics = [...root.querySelectorAll('.evolution-metrics dd')].map(element => element.textContent.match(/\d+/g)?.join(' → '))
       if (metrics.join(',') !== '2 → 1,1 → 0,1,1') throw new Error('Incorrect comparison metrics: ' + metrics)
       const key = card('F-key')
       const dependency = card('F-dep')
@@ -1150,11 +1261,6 @@ try {
         throw new Error('Phase switching fetched data or recreated a shared finding')
       }
 
-      const [before, after] = root.querySelectorAll('select')
-      const choose = (select, id) => {
-        select.value = id
-        select.dispatchEvent(new Event('change', { bubbles: true }))
-      }
       choose(before, 'run-2')
       await until(() => root.querySelector('[role="alert"]')?.textContent.includes('разные'))
       if (root.querySelector('.evolution-track')) throw new Error('Duplicate pair retained stale results')
@@ -1254,6 +1360,12 @@ try {
       await until(() => canvas.querySelector('[data-id="demo-gate:yes"] .pulse-edge-core'), 24000)
       if (canvas.querySelector('[data-id="demo-gate:no"] .pulse-edge-core')) throw new Error('YES lit the wrong edge')
       await until(() => node('telegram', 'running'))
+      const deliveryPulse = await until(() => canvas.querySelector('[data-id="demo-telegram:next"] .pulse-edge-core'))
+      const deliveryEdge = deliveryPulse.closest('.react-flow__edge').querySelector('.react-flow__edge-path')
+      if (deliveryPulse.getAttribute('d') !== deliveryEdge.getAttribute('d')) {
+        throw new Error('Telegram pulse does not follow the rendered edge')
+      }
+      await until(() => node('finish', 'running'))
       await until(() => panel.querySelector('[data-ci-status="failed"]'))
       const red = (performance.now() - started) / 1000
       if (red < 20 || !node('finish', 'succeeded')) throw new Error('Red run incomplete')
@@ -1286,13 +1398,13 @@ try {
     if (api.headers.get('content-type')?.includes('application/json')) throw new Error('Unexpected mock response')
     const button = text => [...document.querySelectorAll('button')].find(item => item.textContent === text)
     button('Режим демонстрации').click()
-    for (let i = 0; i < 80 && !button('Запустить длинное демо'); i++) await new Promise(resolve => setTimeout(resolve, 25))
-    button('Запустить длинное демо').click()
-    for (let i = 0; i < 80 && !document.querySelector('[data-id="demo-start"] .hologram[data-phase="running"] .hologram-motion'); i++) {
-      await new Promise(resolve => setTimeout(resolve, 25))
-    }
-    if (!document.querySelector('[data-id="demo-start"] .hologram[data-phase="running"] .hologram-motion')) throw new Error('Local demo requires an API')
-    return 'MSW disabled: no worker or mock response, local simulation runs without FastAPI'
+    for (let i = 0; i < 80 && !button('Запустить учебную проверку'); i++) await new Promise(resolve => setTimeout(resolve, 25))
+    button('Запустить учебную проверку').click()
+    for (let i = 0; i < 80 && !document.querySelector('.long-demo'); i++) await new Promise(resolve => setTimeout(resolve, 25))
+    const panel = document.querySelector('.long-demo')
+    if (!panel?.textContent.includes('Учебные снимки · реальные анализаторы') ||
+        panel.querySelector('[data-ci-status]')) throw new Error('Live training presented a simulated result')
+    return 'MSW disabled: no worker or mock response, live training opens without a simulated result'
   })
 } finally {
   for (const child of children.reverse()) child.kill()

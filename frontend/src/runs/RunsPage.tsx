@@ -1,3 +1,4 @@
+import { PrismGlassCard } from '../ui/PrismGlassCard'
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from '../ui/Icon'
 import { WorkspaceNav } from '../ui/WorkspaceNav'
@@ -10,23 +11,29 @@ import { ComparisonPage } from './ComparisonPage'
 import { FixDialog } from './FixDialog'
 import { FindingCard } from './FindingCard'
 import { ThresholdPreview } from './ThresholdPreview'
+import { RunOutcomeDialog } from './RunOutcomeDialog'
+import { errorHelp, isRunFinished } from './outcome'
 import type { Run } from './types'
 import type { Workflow } from '../workflow'
 
 import { getHighlight } from './ci'
 import { runsUrl } from './navigation'
 
-const errorHelp = {
-  ai: ['Рекомендации AI', 'Проверьте доступность выбранной модели и повторите запуск.'],
-  telegram: ['Доставка в Telegram', 'Проверьте подключение и права бота в чате.'],
-  analysis: ['Анализ проекта', 'Проверьте снимок и настройки сценария, затем повторите запуск.'],
-  comparison: ['Сравнение снимков', 'Выберите подходящий базовый снимок и повторите проверку.'],
-} as const
 const catalogLabels = { training: 'Учебный', organizer: 'Организаторы', custom: 'Серверный файл', osv: 'OSV' } as const
 
-export function RunsPage({ workflowId, runId, openTimeMachine }: { workflowId: string; runId?: string; openTimeMachine?: boolean }) {
+function clearOutcomeLink() {
+  const url = new URL(window.location.href)
+  if (!url.searchParams.has('outcome')) return
+  url.searchParams.delete('outcome')
+  window.history.replaceState(window.history.state, '', url)
+}
+
+export function RunsPage({ workflowId, runId, openTimeMachine, showOutcome }: {
+  workflowId: string; runId?: string; openTimeMachine?: boolean; showOutcome?: boolean
+}) {
   const [runs, setRuns] = useState<Run[]>()
   const [run, setRun] = useState<Run>()
+  const [watchedRun, setWatchedRun] = useState<string>()
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
 
@@ -39,7 +46,10 @@ export function RunsPage({ workflowId, runId, openTimeMachine }: { workflowId: s
           const result = await getJson<Run>(`/runs/${encodeURIComponent(runId)}`)
           if (!active) return
           setRun(result)
-          if (result.status === 'queued' || result.status === 'running') poll = setTimeout(() => void load(), 500)
+          if (!isRunFinished(result.status)) {
+            setWatchedRun(result.id)
+            poll = setTimeout(() => void load(), 500)
+          }
         } else if (workflowId === 'new') {
           if (active) setRuns([])
         } else {
@@ -114,6 +124,8 @@ export function RunsPage({ workflowId, runId, openTimeMachine }: { workflowId: s
         <a className="garden-subtle-action" href={`?workflow=${encodeURIComponent(workflowId)}`}>Открыть конструктор</a>
       </section>}
       {run && <>
+        {run.id === runId && isRunFinished(run.status) && (showOutcome || watchedRun === run.id) &&
+          <RunOutcomeDialog key={run.id} run={run} onBeforeOpen={clearOutcomeLink} />}
         <div className="replay-controls">
           <button aria-expanded={timeMachine} onClick={() => setTimeMachine(value => !value)}>Машина времени безопасности</button>
           {run.status !== 'queued' && run.status !== 'running' && <>
@@ -131,7 +143,7 @@ export function RunsPage({ workflowId, runId, openTimeMachine }: { workflowId: s
           onClose={closeExplanation}
           graphHref={`?${new URLSearchParams({ workflow: run.workflowId, ciRun: run.id, explain: '1' })}`} />}
         {timeMachine && <TimeMachine key={`time-machine:${run.id}`} workflowId={run.workflowId} initialId={run.id} />}
-        <div className="garden-run-summary" data-detail-ci={run.ci.status}>
+        <PrismGlassCard variant="featured" accent="mint" className="garden-run-summary" data-detail-ci={run.ci.status}>
           <div className="garden-run-summary-badges"><span>Выполнение сценария</span><StatusBadge kind="run" status={run.status} />
             <span>Проверка безопасности (CI)</span><StatusBadge kind="ci" status={run.ci.status} /></div>
           {run.report.summary && <p>{run.report.summary}</p>}
@@ -141,7 +153,7 @@ export function RunsPage({ workflowId, runId, openTimeMachine }: { workflowId: s
             Справочник зависимостей · {run.catalogSource ? catalogLabels[run.catalogSource] : 'Из истории'} · <code>{run.analysisVersion}</code>
           </p>}
           {run.report.delivery === 'sent' && <p role="status">Отчёт доставлен в Telegram{run.report.messageId && ` · сообщение № ${run.report.messageId}`}</p>}
-        </div>
+        </PrismGlassCard>
         {Boolean(run.technicalErrors?.length) && <section className="garden-integration-panel garden-run-errors" aria-label="Технические ошибки">
           <h2>Технические ошибки</h2>
           <ul>{run.technicalErrors?.map((item, index) => <li key={`${item.code}-${index}`}>

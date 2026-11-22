@@ -1,0 +1,16 @@
+.brand-preview { max-width: 1050px; margin: 0 auto; padding: 24px 16px; }
+.brand-preview h1 { margin: 0 0 20px; font-size: 28px; }
+.brand-preview-panel {
+  display: grid; grid-template-columns: minmax(0, 1fr) 156px; gap: 18px;
+  align-items: center; padding: 20px; margin-block: 12px;
+  background: #111a1f; color: #e7f4ee; border: 1px solid #304440; border-radius: 16px;
+}
+.brand-preview-panel h2 { font-size: 14px; margin: 0 0 15px; }
+.brand-preview-panel > aside { padding: 13px 12px; border-inline-start: 1px solid #304440; }
+.brand-preview-panel[data-theme='prism-light'] { background: #f6faf6; color: #18382e; border-color: #ccdfd2; }
+.brand-preview-panel[data-theme='prism-light'] > aside { border-color: #ccdfd2; }
+
+@media (max-width: 560px) {
+  .brand-preview-panel { grid-template-columns: 1fr; }
+  .brand-preview-panel > aside { border-inline-start: 0; border-block-start: 1px solid #304440; }
+}
