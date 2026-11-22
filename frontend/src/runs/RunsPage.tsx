@@ -1,3 +1,4 @@
+import { PrismGlassCard } from '../ui/PrismGlassCard'
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from '../ui/Icon'
 import { WorkspaceNav } from '../ui/WorkspaceNav'
@@ -131,7 +132,7 @@ export function RunsPage({ workflowId, runId, openTimeMachine }: { workflowId: s
           onClose={closeExplanation}
           graphHref={`?${new URLSearchParams({ workflow: run.workflowId, ciRun: run.id, explain: '1' })}`} />}
         {timeMachine && <TimeMachine key={`time-machine:${run.id}`} workflowId={run.workflowId} initialId={run.id} />}
-        <div className="garden-run-summary" data-detail-ci={run.ci.status}>
+        <PrismGlassCard variant="featured" accent="mint" className="garden-run-summary" data-detail-ci={run.ci.status}>
           <div className="garden-run-summary-badges"><span>Выполнение сценария</span><StatusBadge kind="run" status={run.status} />
             <span>Проверка безопасности (CI)</span><StatusBadge kind="ci" status={run.ci.status} /></div>
           {run.report.summary && <p>{run.report.summary}</p>}
@@ -141,7 +142,7 @@ export function RunsPage({ workflowId, runId, openTimeMachine }: { workflowId: s
             Справочник зависимостей · {run.catalogSource ? catalogLabels[run.catalogSource] : 'Из истории'} · <code>{run.analysisVersion}</code>
           </p>}
           {run.report.delivery === 'sent' && <p role="status">Отчёт доставлен в Telegram{run.report.messageId && ` · сообщение № ${run.report.messageId}`}</p>}
-        </div>
+        </PrismGlassCard>
         {Boolean(run.technicalErrors?.length) && <section className="garden-integration-panel garden-run-errors" aria-label="Технические ошибки">
           <h2>Технические ошибки</h2>
           <ul>{run.technicalErrors?.map((item, index) => <li key={`${item.code}-${index}`}>

@@ -1,3 +1,4 @@
+import { PrismGlassCard } from '../ui/PrismGlassCard'
 import { useEffect } from 'react'
 import type { Run } from '../runs/types'
 import { StatusBadge } from '../ui/StatusBadge'
@@ -62,7 +63,7 @@ export function PresentationMode({ stage, setStage, onClose, run, error, playbac
       </label>
       <PlaybackControls playback={playback} speed={speed} onSpeed={onSpeed} />
     </>}
-    {run && stage === 0 && <div>
+    {run && stage === 0 && <PrismGlassCard className="prism-replay-summary" variant="elevated" accent="aqua">
       <p>Фактический итог {run.id}</p>
       <div className="replay-controls"><StatusBadge kind="run" status={run.status} />
         <StatusBadge kind="ci" status={run.ci.status} /></div>
@@ -70,7 +71,7 @@ export function PresentationMode({ stage, setStage, onClose, run, error, playbac
       {playback.view?.ciStatus && <p className="pulse-ci-result" data-ci-status={playback.view.ciStatus}>
         CI {playback.view.ciStatus.toUpperCase()}
       </p>}
-    </div>}
+    </PrismGlassCard>}
     {run && stage === 1 && <ExplainableCI key={run.id} run={run} onFocus={onFocus} />}
     {run && stage === 2 && (findingId
       ? <FixDialog key={run.id} run={run} findingId={findingId} />

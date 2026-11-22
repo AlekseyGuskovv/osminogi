@@ -20,6 +20,8 @@ import { NodeSettings } from './NodeSettings'
 import { addNode, connect, removeNode } from './graph'
 import '@xyflow/react/dist/style.css'
 import { Icon } from '../ui/Icon'
+import { PrismToast } from '../ui/PrismToast'
+import type { ToastMessage } from '../ui/PrismToast'
 import { PrismHeroDecoration } from '../ui/PrismHeroDecoration'
 import { WorkspaceNav } from '../ui/WorkspaceNav'
 import { orderGraph } from './layout'
@@ -144,6 +146,7 @@ type FlowCanvasProps = {
   edges: Edge[]
   pending: boolean
   overview: boolean
+  onExitFocus?: () => void
   onInit: (instance: ReactFlowInstance<Block>) => void
   onMoveStart: (event: MouseEvent | TouchEvent | null) => void
   onPositionCommit: (positions: Map<string, { x: number; y: number }>) => void
@@ -153,21 +156,23 @@ type FlowCanvasProps = {
   onClearSelection: () => void
 }
 
-function GraphControls({ minZoom, maxZoom }: { minZoom: number; maxZoom: number }) {
+function GraphControls({ minZoom, maxZoom, onExitFocus }: { minZoom: number; maxZoom: number; onExitFocus?: () => void }) {
   const flow = useReactFlow()
   const zoom = useViewportStore(state => state.transform[2])
-  return <Controls showZoom={false} showFitView={false} showInteractive={false} aria-label="Управление графом">
+  return <Controls position={onExitFocus ? 'top-left' : 'bottom-left'} showZoom={false} showFitView={false} showInteractive={false} aria-label="Управление графом">
     <ControlButton className="react-flow__controls-zoomin" aria-label="Приблизить" title="Приблизить"
       disabled={zoom >= maxZoom} onClick={() => void flow.zoomIn()}><Icon name="plus" size={16} /></ControlButton>
     <ControlButton className="react-flow__controls-zoomout" aria-label="Отдалить" title="Отдалить"
       disabled={zoom <= minZoom} onClick={() => void flow.zoomOut()}><Icon name="minus" size={16} /></ControlButton>
     <ControlButton className="react-flow__controls-fitview" aria-label="Показать весь граф" title="Показать весь граф"
       onClick={() => void flow.fitView()}><Icon name="fit" size={16} /></ControlButton>
+    {onExitFocus && <ControlButton aria-label="Выйти из режима фокуса" title="Выйти из режима фокуса"
+      onClick={onExitFocus}><Icon name="close" size={16} /></ControlButton>}
   </Controls>
 }
 
 const FlowCanvas = memo(function FlowCanvas({
-  nodes, edges, pending, overview, onInit, onMoveStart, onPositionCommit, onConnect, onPickNode, onPickEdge, onClearSelection,
+  nodes, edges, pending, overview, onExitFocus, onInit, onMoveStart, onPositionCommit, onConnect, onPickNode, onPickEdge, onClearSelection,
 }: FlowCanvasProps) {
   const [localNodes, setLocalNodes] = useNodesState(nodes)
   useEffect(() => {
@@ -200,7 +205,7 @@ const FlowCanvas = memo(function FlowCanvas({
     onEdgeClick={overview ? undefined : (_, edge) => onPickEdge(edge.id)}
     onPaneClick={overview ? undefined : onClearSelection}>
     <Background color="var(--graph-grid, #33464e)" gap={24} size={1.2} />
-    <GraphControls minZoom={overview ? .08 : .2} maxZoom={2} />
+    <GraphControls minZoom={overview ? .08 : .2} maxZoom={2} onExitFocus={onExitFocus} />
   </ReactFlow>
 })
 
@@ -279,7 +284,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain, r
   const activeLabel = activeDemoNode && labels[activeDemoNode.type][0]
   const explanationRun = demoOpen && demoStage === 1 ? demo.run : explanationOpen ? ciRun : undefined
   const highlightRun = longDemo ? undefined : demoOpen ? demoStage === 3 ? demoCompareRun : explanationRun : ciRun
-  const [notice, setNotice] = useState<{ text: string; error?: boolean }>()
+  const [notice, setNotice] = useState<ToastMessage>()
   const dirty = workflow && (!workflow.id || JSON.stringify({ ...workflow, snapshotId: snapshotId || null }) !==
     JSON.stringify({ ...savedWorkflow, snapshotId: savedWorkflow?.snapshotId || null }))
   const hasStart = workflow?.nodes.some(node => node.type === 'start')
@@ -398,6 +403,34 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain, r
       node.position.y + (node.measured?.height ?? 62) / 2, { zoom, duration })
   }
 
+  const [focusCanvas, setFocusCanvas] = useState(false)
+  const focusControl = useRef<HTMLButtonElement>(null)
+  const changeFocusCanvas = useCallback((next: boolean) => {
+    // Container resizes must retain the user's camera, even before the first pan.
+    cameraTouched.current = true
+    setFocusCanvas(next)
+    focusControl.current?.focus({ preventScroll: true })
+  }, [])
+  const exitFocusCanvas = useCallback(() => changeFocusCanvas(false), [changeFocusCanvas])
+
+  useEffect(() => {
+    function handleFocusKey(event: KeyboardEvent) {
+      if (event.defaultPrevented || event.repeat || event.isComposing || event.altKey || event.ctrlKey || event.metaKey ||
+        document.querySelector('dialog[open]')) return
+      const target = event.target
+      const editing = target instanceof HTMLElement &&
+        (target.isContentEditable || Boolean(target.closest('input, textarea, select')))
+      if (editing) return
+      const toggle = event.key.toLowerCase() === 'f'
+      if (!focusControl.current || (!toggle && !(focusCanvas && event.key === 'Escape'))) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      changeFocusCanvas(toggle && !focusCanvas)
+    }
+    window.addEventListener('keydown', handleFocusKey, true)
+    return () => window.removeEventListener('keydown', handleFocusKey, true)
+  }, [focusCanvas, changeFocusCanvas])
+
   const markCameraTouched = useCallback((event: MouseEvent | TouchEvent | null) => {
     if (event) { cameraTouched.current = true; followTouched.current = true }
   }, [])
@@ -434,7 +467,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain, r
       setCiRun(run)
       setSelectedId(run.ci.nodeId ?? run.ci.gateNodeId ?? '')
     }).catch((error: unknown) => {
-      if (active) setNotice({ text: error instanceof Error ? error.message : 'Не удалось загрузить решение CI.', error: true })
+      if (active) setNotice({ text: error instanceof Error ? error.message : 'Не удалось загрузить решение CI.', tone: 'error' })
     })
     return () => { active = false }
   }, [ciRunId, workflowId])
@@ -455,7 +488,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain, r
       setSavedChoices(saved)
       setSnapshotId(loaded.snapshotId ?? '')
     }).catch((error: unknown) => {
-      if (active) setNotice({ text: error instanceof Error ? error.message : 'Не удалось загрузить сценарий.', error: true })
+      if (active) setNotice({ text: error instanceof Error ? error.message : 'Не удалось загрузить сценарий.', tone: 'error' })
     }).finally(() => {
       if (active) setLoading(false)
     })
@@ -485,7 +518,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain, r
     const workspace = canvas.current?.parentElement
     const panel = inspector.current
     let right = Math.min(rect.right, window.innerWidth)
-    if (panel && workspace) {
+    if (!focusCanvas && panel && workspace) {
       const panelStyle = getComputedStyle(panel)
       const workspaceStyle = getComputedStyle(workspace)
       const panelWidth = Number.parseFloat(workspaceStyle.getPropertyValue('--inspector-width'))
@@ -581,14 +614,14 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain, r
         setWorkflow(saved)
         setSavedWorkflow(saved)
         setSavedChoices(items => [...items.filter(item => item.id !== saved.id), saved])
-        setNotice({ text: `Сохранено · ревизия ${saved.revision}` })
+        setNotice({ text: `Сохранено · ревизия ${saved.revision}`, tone: 'success' })
       }
       if (action === 'run' && targetId) {
         playback.restart()
         await start(targetId, { trigger: 'manual', snapshotId })
       }
     } catch (error) {
-      setNotice({ text: error instanceof Error ? error.message : 'Не удалось выполнить запрос.', error: true })
+      setNotice({ text: error instanceof Error ? error.message : 'Не удалось выполнить запрос.', tone: 'error' })
     } finally {
       setSaving(false)
     }
@@ -645,7 +678,10 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain, r
             <button type="button" disabled={pending} onClick={openDemo}>Режим демонстрации</button>
             {workflow && <>
               <button disabled={pending || demoOpen || Boolean(recordedGraph)} onClick={() => void submit('save')}>Сохранить</button>
-              <button className="garden-primary" disabled={pending || demoOpen || Boolean(recordedGraph) || !snapshotId} onClick={() => void submit('run')}><Icon name="start" size={15} />Запустить</button>
+              <button className="garden-primary" aria-busy={starting} disabled={pending || demoOpen || Boolean(recordedGraph) || !snapshotId} onClick={() => void submit('run')}>
+                {starting ? <span className="prism-start-spinner" role="img" aria-label="Отправка запроса" /> : <Icon name="start" size={15} />}
+                Запустить
+              </button>
             </>}
           </div>
         </div>
@@ -686,7 +722,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain, r
 
       </div>}
       <AdvisoryPanel organizer={snapshots.some(snapshot => snapshot.id === snapshotId && snapshot.catalogSource === 'organizer')} />
-      {draftWarnings.length > 0 && <section className="garden-notice garden-draft-notice" aria-label="Предупреждения черновика">
+      {draftWarnings.length > 0 && <section className="garden-notice garden-draft-notice" data-feedback="warning" aria-label="Предупреждения черновика">
         <ul>{draftWarnings.map(warning => <li key={warning}>{warning}</li>)}</ul>
         {missingChannel && <button type="button" onClick={() => { setSelectedId(missingChannel.id); setInspectorCollapsed(false); setInspectorOpen(true) }}>Настроить Telegram</button>}
       </section>}
@@ -703,7 +739,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain, r
         {highlight.findingId && ` · ${highlight.findingId}`}
         {!explanationOpen && <button onClick={() => setExplanationOpen(true)}>{ciRun.ci.status === 'failed' ? 'Почему CI не пройден?' : 'Объяснение CI'}</button>}
       </p>}
-      {notice && <p className={`garden-notice ${notice.error ? 'error' : ''}`} role={notice.error ? 'alert' : 'status'}>{notice.text}</p>}
+      <PrismToast message={notice} onDismiss={() => setNotice(undefined)} />
       {accepted && workflow?.id && <section className="garden-run-accepted" aria-label="Текущий запуск">
         <a href={runsUrl(workflow.id, accepted.id)}>{accepted.id}</a> <span role="status" data-run-status={runStatus}>{{
           queued: 'Запуск поставлен в очередь', running: 'Проверка выполняется', succeeded: 'Проверка завершена', failed: 'Проверка завершилась ошибкой',
@@ -715,7 +751,7 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain, r
         {criticalFinding && <a href={runsUrl(workflow.id, accepted.id)}>Находка {criticalFinding}</a>}
         <PlaybackControls playback={playback} speed={speed} onSpeed={setSpeed} />
       </section>}
-      {loading && <p className="garden-notice" role="status">Загрузка сценария…</p>}
+      {loading && <p className="garden-notice" data-feedback="info" role="status">Загрузка сценария…</p>}
       {!loading && !workflow && <button className="garden-retry" onClick={() => { setLoading(true); setNotice(undefined); setLoadAttempt(attempt => attempt + 1) }}>Повторить</button>}
       {demoOpen && (longDemo ? <LongDemoPanel scenario={scenario} started={longStarted} graph={training?.graph}
         busy={trainingBusy} error={trainingError} onScenario={next => {
@@ -734,8 +770,8 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain, r
         activeLabel={activeLabel} onFocus={focusEvidence} replayId={demo.id ?? ''} choices={demo.choices ?? (!workflow?.id ? [] : undefined)}
         onReplayId={id => { setReplayId(id); playback.restart() }}
         onCompare={setDemoCompareRun} onLongDemo={enterLongDemo} />)}
-      {displayedWorkflow && <div className="garden-workspace" data-inspector-collapsed={inspectorCollapsed} data-explain-open={!demoOpen && Boolean(explanationRun)}>
-        <aside className="garden-panel garden-palette" aria-label="Палитра">
+      {displayedWorkflow && <div className="garden-workspace" data-focus-canvas={focusCanvas} data-inspector-collapsed={inspectorCollapsed} data-explain-open={!demoOpen && Boolean(explanationRun)}>
+        <aside id="workflow-palette" className="garden-panel garden-palette" inert={focusCanvas} aria-label="Палитра">
           <h2>Палитра блоков</h2>
           {palette.map(group => <section key={group.title}><h3>{group.title}</h3>
             {group.types.map(type => {
@@ -754,18 +790,26 @@ export function WorkflowEditor({ workflowId, ciRunId, copiedTemplate, explain, r
         </aside>
         <section ref={canvas} className="garden-canvas" aria-label="Граф сценария" onDragOver={demoOpen ? undefined : allowPaletteDrop} onDrop={demoOpen ? undefined : dropBlock}>
           <div className="garden-canvas-header"><div><Icon name="graph" size={16} /><strong>{longDemo ? "Учебный граф" : "Граф сценария"}</strong></div>
-            <button className="garden-inspector-toggle" onClick={() => { setInspectorCollapsed(false); setInspectorOpen(open => !open) }} aria-expanded={inspectorOpen} aria-controls="workflow-inspector"><Icon name="panel" size={16} />Настройки</button>
+            <div className="garden-canvas-actions">
+              <button ref={focusControl} type="button" className="garden-focus-toggle"
+                aria-label="Режим фокуса" aria-pressed={focusCanvas} aria-controls="workflow-palette workflow-inspector"
+                aria-keyshortcuts="F Escape" title={focusCanvas ? 'Выйти из режима фокуса (Esc)' : 'Режим фокуса (F)'}
+                onClick={() => changeFocusCanvas(!focusCanvas)}>
+                <Icon name={focusCanvas ? 'close' : 'fit'} size={16} />{focusCanvas ? 'Выйти из фокуса' : 'Режим фокуса'}
+              </button>
+              <button inert={focusCanvas} className="garden-inspector-toggle" onClick={() => { setInspectorCollapsed(false); setInspectorOpen(open => !open) }} aria-expanded={inspectorOpen} aria-controls="workflow-inspector"><Icon name="panel" size={16} />Настройки</button>
+            </div>
           </div>
-          <FlowCanvas nodes={nodes} edges={edges} overview={longDemo} pending={pending || demoOpen || Boolean(recordedGraph)} onInit={initializeFlow} onMoveStart={markCameraTouched}
+          <FlowCanvas onExitFocus={focusCanvas ? exitFocusCanvas : undefined} nodes={nodes} edges={edges} overview={longDemo} pending={pending || demoOpen || Boolean(recordedGraph)} onInit={initializeFlow} onMoveStart={markCameraTouched}
             onPositionCommit={commitPositions} onConnect={linkBlocks} onPickNode={pickNode}
             onPickEdge={pickEdge} onClearSelection={clearSelection} />
           <button className="garden-layout" type="button" disabled={pending} onClick={order}><Icon name="layout" size={15} />Упорядочить</button>
         </section>
         {!longDemo && workflow && (!demoOpen && explanationRun
-          ? <aside className="replay-inspector"><ExplainableCI key={explanationRun.id} run={explanationRun} initialStep={0}
+          ? <aside id="workflow-inspector" className="replay-inspector" inert={focusCanvas}><ExplainableCI key={explanationRun.id} run={explanationRun} initialStep={0}
             analyzerType={displayedWorkflow.nodes.find(node => node.id === explanationRun.ci.nodeId)?.type}
             onClose={() => setExplanationOpen(false)} onFocus={focusEvidence} /></aside>
-          : <aside ref={inspector} className="garden-panel garden-settings" id="workflow-inspector" data-open={inspectorOpen} aria-label="Настройки блока">
+          : <aside inert={focusCanvas} ref={inspector} className="garden-panel garden-settings" id="workflow-inspector" data-open={inspectorOpen} aria-label="Настройки блока">
           <div className="garden-inspector-title"><h2>Настройки</h2><button className="garden-inspector-close" onClick={() => { setInspectorOpen(false); setInspectorCollapsed(true) }} aria-label="Закрыть настройки"><Icon name="close" size={13} /></button></div>
           {activeNode ? <>
             <div className="garden-inspector-node" data-node-tone={labels[activeNode.type][2]}>
