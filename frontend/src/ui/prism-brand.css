@@ -1,9 +1,11 @@
 :root {
   --prism-wordmark: url('../assets/prism-wordmark-dark.png');
+  --prism-caption-color: #b6c9c4;
   --prism-signature: url('../assets/prism-signature-dark.png');
 }
 [data-theme='prism-light'] {
   --prism-wordmark: url('../assets/prism-wordmark.png');
+  --prism-caption-color: #435d55;
   --prism-signature: url('../assets/prism-signature.png');
 }
 .garden-brand {
@@ -31,13 +33,39 @@
 .prism-brand--full .prism-brand-signature {
   position: absolute; width: 68.63%; left: 28.99%; top: 74.82%;
 }
-.prism-brand--sidebar { display: grid; justify-items: center; gap: 2px; width: 100%; }
-.prism-brand--sidebar .prism-brand-diamond { width: 58px; max-width: 100%; }
-.prism-brand--sidebar .prism-brand-wordmark { width: min(122px, 100%); }
-.prism-brand-lines { display: grid; justify-items: center; }
-.prism-brand-lines svg { display: block; max-width: 100%; }
-.prism-brand-ink-light, [data-theme='prism-light'] .prism-brand-ink-dark { display: none; }
-[data-theme='prism-light'] .prism-brand-ink-light { display: inline; }
+.prism-brand--sidebar { display: grid; justify-items: center; gap: 1.6px; width: 100%; }
+.prism-brand--sidebar .prism-brand-diamond { width: 52px; max-width: 100%; }
+.prism-brand--sidebar .prism-brand-wordmark {
+  position: relative;
+  width: min(122px, 100%);
+  background-image: none;
+}
+.prism-brand--sidebar .prism-brand-wordmark::before,
+.prism-brand--sidebar .prism-brand-wordmark::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--prism-wordmark) center / contain no-repeat;
+}
+/* The split follows the transparent seam to the right of the M in the source PNG. */
+.prism-brand--sidebar .prism-brand-wordmark::before { clip-path: inset(0 9.04% 0 0); }
+.prism-brand--sidebar .prism-brand-wordmark::after {
+  clip-path: inset(0 0 0 90.96%);
+  translate: -.65px .6px;
+}
+.prism-brand-lines {
+  color: var(--prism-caption-color);
+  display: grid;
+  justify-items: center;
+  max-width: 100%;
+  text-align: center;
+  font-size: 9.5px;
+  font-weight: 650;
+  line-height: 11px;
+  letter-spacing: .01em;
+  text-transform: uppercase;
+  text-wrap: balance;
+}
 
 @media (max-width: 660px) {
   .garden-brand { margin: 0; }
