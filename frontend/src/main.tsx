@@ -6,7 +6,6 @@ import './security-replay/replay.css'
 import './theme.css'
 import './ui/icons.css'
 import './ui/prism-interactions.css'
-import { PrismIntro } from './ui/Theme'
 import App from './App.tsx'
 import { installMocks } from './mocks/worker'
 
@@ -15,7 +14,6 @@ async function startApp() {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <App />
-      <PrismIntro />
     </StrictMode>,
   )
 }

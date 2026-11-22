@@ -63,17 +63,6 @@ async function evaluate(port, test, path = "/", reducedMotion = false) {
     if (reducedMotion) await call('Emulation.setEmulatedMedia', {
       features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
     })
-    await until(async () => {
-      const result = await call('Runtime.evaluate', {
-        expression: `(() => {
-          const intro = document.querySelector('.prism-intro[open]')
-          intro?.querySelector('button')?.click()
-          return !intro
-        })()`,
-        returnByValue: true,
-      })
-      return result.result.value
-    })
     await call('Runtime.enable', {})
     let syntheticTokenLogged = false
     socket.addEventListener('message', message => {

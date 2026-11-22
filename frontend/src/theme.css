@@ -169,25 +169,6 @@
   :root .garden-editor-heading, :root .garden-toolbar { margin-inline: 10px; padding-inline: 12px; }
 }
 
-.prism-intro {
-  position: fixed; inset: 0; margin: 0; width: 100%; height: 100%; max-width: none; max-height: none;
-  border: 0; overflow: hidden; background: radial-gradient(ellipse at 50% 42%, #1d5942, #071a16 62%);
-  color: #f3fff5; isolation: isolate;
-}
-.prism-intro[open] { display: grid; place-items: center; animation: prism-intro-out 250ms ease-in 2.15s both; }
-.prism-intro::before {
-  content: ''; position: absolute; inset: 0; pointer-events: none;
-  background: linear-gradient(110deg, transparent 39%, #afff8b25 48%, #cceeff3a 50%, transparent 62%);
-  animation: prism-sweep 1.1s ease-in-out .4s both;
-}
-.prism-intro-lockup { display: grid; justify-items: center; z-index: 1; }
-.prism-intro-lockup img { width: clamp(160px, 34vw, 290px); animation: prism-gem 850ms cubic-bezier(.15,.8,.2,1) both; }
-.prism-intro-lockup strong { font-size: clamp(38px, 6vw, 75px); letter-spacing: .19em; animation: prism-word 500ms ease-out .45s both; }
-.prism-intro button { position: absolute; bottom: 24px; right: 24px; padding: 9px 14px; border-radius: 10px; border: 1px solid #92bea5; background: #133c2b; color: #fff; }
-@keyframes prism-gem { from { opacity: 0; transform: translateY(15px) scale(.65) rotate(-13deg); } to { opacity: 1; transform: none; } }
-@keyframes prism-word { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-@keyframes prism-sweep { from { transform: translateX(-110%); } to { transform: translateX(110%); } }
-@keyframes prism-intro-out { from { opacity: 1; } to { opacity: 0; } }
 @font-face {
   font-family: 'Manrope';
   font-style: normal;
