@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import logo from '../assets/prism-logo.png'
-import { Icon } from './Icon'
 
 const themeKey = 'cyber-garden-theme'
 const introKey = 'cyber-garden-prism-intro'
@@ -21,8 +20,6 @@ export function ThemePicker() {
 
 export function WorkspaceBrand() {
   return <a className="garden-brand" href="./" title="Cyber Garden">
-    <span className="garden-dark-brand"><Icon name="brand" size={22} /></span>
-    <b className="garden-dark-brand">Cyber<br />Garden</b>
     <span className="garden-prism-mark"><img src={logo} alt="" width="60" height="60" /></span>
     <span className="garden-prism-name"><strong>PRISM</strong><small>Cyber Garden · Центр-инвест</small></span>
   </a>

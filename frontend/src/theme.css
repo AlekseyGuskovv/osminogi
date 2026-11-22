@@ -1,8 +1,21 @@
-.garden-brand > .garden-prism-mark, .garden-brand > .garden-prism-name { display: none; }
 .garden-theme-picker { display: grid; gap: 4px; margin: 18px 0 0; font-size: 11px; color: var(--muted); }
 .garden-theme-picker select { width: 100%; min-width: 0; padding: 6px 3px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); background: var(--surface); }
 
+:root {
+  --radius: 16px;
+  --heading-fill: linear-gradient(116deg, #142823, #10211c 56%, #212535);
+  --hero-fill: radial-gradient(ellipse at 85% 8%, #274737, transparent 54%),
+    linear-gradient(105deg, #142823, #10241a 56%, #182938 87%, #27263a);
+  --mark-fill: linear-gradient(145deg, #123f32, #236b49);
+  font-family: Manrope, system-ui, sans-serif;
+}
+
 :root[data-theme='prism-light'] {
+  --heading-border: #fcfffb;
+  --heading-fill: radial-gradient(ellipse at 95% 5%, #d3f1d8, transparent 66%),
+    linear-gradient(116deg, #ffffff, #f0fae8 56%, #efeaf8);
+  --hero-fill: radial-gradient(ellipse at 85% 8%, #fff, transparent 50%),
+    linear-gradient(105deg, #fffef9, #edf9e6 52%, #ddf3e9 87%, #f2edfa);
   --bg: #f5f9f3;
   --panel: #ffffff;
   --surface: #f1f8f1;
@@ -26,74 +39,76 @@
   --graph-no: #9b712d;
   --graph-active: #247849;
   --graph-danger: #ad394b;
-  --radius: 16px;
   color-scheme: light;
-  font-family: Manrope, system-ui, sans-serif;
 }
 [data-theme='prism-light'] body {
   background: radial-gradient(ellipse at 88% 0%, #dbf3d4, transparent 32rem),
     radial-gradient(ellipse at 13% 65%, #ebe7f887, transparent 36rem), var(--bg);
 }
 [data-theme='prism-light'] :focus-visible { outline-color: var(--focus); }
-[data-theme='prism-light'] .garden-rail {
-  background: #fbfff9e8;
+:root .garden-rail {
   padding-inline: 12px;
 }
-[data-theme='prism-light'] .garden-brand {
+[data-theme='prism-light'] .garden-rail {
+  background: #fbfff9e8;
+}
+:root .garden-brand {
   display: grid; justify-items: center; gap: 9px; margin: 4px 0 25px; text-align: center;
 }
-[data-theme='prism-light'] .garden-brand > .garden-dark-brand { display: none; }
-[data-theme='prism-light'] .garden-brand > .garden-prism-mark {
+:root .garden-brand > .garden-prism-mark {
   display: grid; place-items: center; width: 65px; height: 65px; overflow: hidden;
-  border-radius: 20px; background: linear-gradient(145deg, #123f32, #236b49);
+  border-radius: 20px;
+  background: var(--mark-fill);
   box-shadow: 0 7px 18px #194e3a2e, inset 0 1px #ffffff30;
 }
 .garden-prism-mark img { display: block; width: 100%; height: 100%; object-fit: contain; }
-[data-theme='prism-light'] .garden-brand > .garden-prism-name {
-  width: auto; height: auto; display: grid; gap: 3px; background: none; color: var(--accent);
+:root .garden-brand > .garden-prism-name {
+  width: auto; height: auto; display: grid; gap: 3px;
+  background: none; color: var(--accent);
 }
 .garden-prism-name strong { font-size: 19px; letter-spacing: .13em; }
 .garden-prism-name small { max-width: 120px; text-wrap: balance; color: var(--muted); font-size: 11px; line-height: 1.3; }
-[data-theme='prism-light'] .garden-rail nav { gap: 7px; }
-[data-theme='prism-light'] .garden-rail nav a {
+:root .garden-rail nav { gap: 7px; }
+:root .garden-rail nav a {
   grid-auto-flow: column; grid-template-columns: 19px minmax(0,1fr); justify-items: start;
   align-items: center; gap: 8px; min-height: 45px; padding: 8px; font-size: 12px;
   border-radius: 12px; font-weight: 700;
 }
 [data-theme='prism-light'] .garden-rail nav a[aria-current] { background: var(--active); border-color: #bcdcc4; color: var(--accent); }
 [data-theme='prism-light'] .garden-kicker span { color: var(--muted); }
-[data-theme='prism-light'] .garden-editor-heading, [data-theme='prism-light'] .garden-page-heading {
-  background: radial-gradient(ellipse at 95% 5%, #d3f1d8, transparent 66%),
-    linear-gradient(116deg, #ffffff, #f0fae8 56%, #efeaf8);
-  border: 1px solid #fcfffb;
+:root .garden-editor-heading, :root .garden-page-heading {
+  border: 1px solid var(--heading-border, var(--border));
   border-radius: 23px;
-  box-shadow: var(--shadow);
   padding: 19px 22px;
+  background: var(--heading-fill);
+  box-shadow: var(--shadow);
 }
-[data-theme='prism-light'] .garden-editor-heading { margin: 16px 24px 12px; flex-wrap: wrap; }
-[data-theme='prism-light'] .garden-heading h1, [data-theme='prism-light'] .garden-page-heading h1 {
+:root .garden-editor-heading { margin: 16px 24px 12px; flex-wrap: wrap; }
+:root .garden-heading h1, :root .garden-page-heading h1 {
   font-size: clamp(25px, 2.6vw, 38px); font-weight: 800; letter-spacing: -.047em; line-height: 1.13;
 }
-[data-theme='prism-light'] .garden-editor-heading .garden-kicker { font-weight: 750; letter-spacing: .035em; }
-[data-theme='prism-light'] .garden-actions { flex-wrap: wrap; flex-shrink: 1; }
-[data-theme='prism-light'] .garden-toolbar {
+:root .garden-editor-heading .garden-kicker { font-weight: 750; letter-spacing: .035em; }
+:root .garden-actions { flex-wrap: wrap; flex-shrink: 1; }
+:root .garden-toolbar {
   margin: 0 24px 12px; padding: 9px 11px; border: 1px solid var(--border);
-  border-radius: var(--radius); background: #fffffff0; box-shadow: var(--shadow);
+  border-radius: var(--radius);
 }
+[data-theme='prism-light'] .garden-toolbar { background: #fffffff0; box-shadow: var(--shadow); }
 [data-theme='prism-light'] .garden-panel, [data-theme='prism-light'] .garden-run-table,
 [data-theme='prism-light'] .garden-run-metrics > div, [data-theme='prism-light'] .garden-finding,
 [data-theme='prism-light'] .garden-template-empty, [data-theme='prism-light'] .garden-template-form,
 [data-theme='prism-light'] .garden-dialog, [data-theme='prism-light'] .replay-panel { box-shadow: var(--shadow); }
-[data-theme='prism-light'] .garden-template-empty { border-style: solid; border-color: var(--border); }
-[data-theme='prism-light'] .garden button, [data-theme='prism-light'] .garden select,
-[data-theme='prism-light'] .garden input:not([type='checkbox']), [data-theme='prism-light'] .garden textarea { border-radius: 10px; }
+:root .garden-template-empty { border: 1px solid var(--border); }
+:root .garden button, :root .garden select,
+:root .garden input:not([type='checkbox']), :root .garden textarea { border-radius: 10px; }
 [data-theme='prism-light'] .garden button:hover:not(:disabled) { background: var(--hover); border-color: #9dbda9; }
 [data-theme='prism-light'] .garden button.garden-primary { background: var(--accent); color: white; }
 [data-theme='prism-light'] .garden button.garden-primary:hover:not(:disabled) { background: #174f36; }
 [data-theme='prism-light'] .garden button:disabled { color: var(--muted); background: var(--disabled); border-color: var(--border); opacity: .85; }
 [data-theme='prism-light'] .garden-palette button:not(:hover) { background: transparent; }
-[data-theme='prism-light'] .garden-palette button { min-height: 36px; font-size: 12px; }
-[data-theme='prism-light'] .garden-icon { border: 1px solid color-mix(in srgb, var(--tone, var(--accent)) 25%, var(--border)); }
+:root .garden-palette button { min-height: 36px; font-size: 12px; }
+:root .garden-icon { border: 1px solid transparent; }
+[data-theme='prism-light'] .garden-icon { border-color: color-mix(in srgb, var(--tone, var(--accent)) 25%, var(--border)); }
 [data-theme='prism-light'] .garden-canvas, [data-theme='prism-light'] .garden-canvas > .react-flow {
   --xy-background-color: #f8fcf8;
   --xy-background-color-default: #f8fcf8;
@@ -103,9 +118,10 @@
 }
 [data-theme='prism-light'] .garden-canvas { box-shadow: var(--shadow); }
 [data-theme='prism-light'] .garden-canvas .react-flow__controls { box-shadow: var(--shadow); }
+:root .garden-node { border-radius: 11px; }
 [data-theme='prism-light'] .garden-node {
   background: linear-gradient(145deg, white, #f1faf3); border-color: var(--border);
-  border-left-color: var(--tone, var(--accent)); border-radius: 11px; box-shadow: 0 4px 12px #17432a1b;
+  border-left-color: var(--tone, var(--accent)); box-shadow: 0 4px 12px #17432a1b;
 }
 [data-theme='prism-light'] .garden-node:hover, [data-theme='prism-light'] .garden-node.selected {
   border-color: var(--tone, var(--accent)); box-shadow: 0 0 0 2px color-mix(in srgb, var(--tone, var(--accent)) 28%, transparent);
@@ -135,22 +151,22 @@
 [data-theme='prism-light'] .garden-finding[data-finding-variant='resolved'] { background: #edf8ef; border-color: #a5cbb0; }
 
 @media (min-width: 661px) {
-  [data-theme='prism-light'] .garden-shell:not([data-replay-open='true']) { grid-template-columns: 156px minmax(0, 1fr); }
+  :root .garden-shell:not([data-replay-open='true']) { grid-template-columns: 156px minmax(0, 1fr); }
 }
 @media (max-width: 660px) {
   .garden-theme-picker { margin: 0; }
   .garden-theme-picker > span { position: absolute; clip-path: inset(50%); }
   .garden-theme-picker select { max-width: 97px; }
-  [data-theme='prism-light'] .garden-rail { gap: 6px; }
-  [data-theme='prism-light'] .garden-brand { margin: 0; }
-  [data-theme='prism-light'] .garden-brand > .garden-prism-name { display: none; }
-  [data-theme='prism-light'] .garden-brand > .garden-prism-mark { width: 36px; height: 36px; border-radius: 11px; }
-  [data-theme='prism-light'] .garden-rail nav { gap: 2px; }
-  [data-theme='prism-light'] .garden-rail nav a {
+  :root .garden-rail { gap: 6px; }
+  :root .garden-brand { margin: 0; }
+  :root .garden-brand > .garden-prism-name { display: none; }
+  :root .garden-brand > .garden-prism-mark { width: 36px; height: 36px; border-radius: 11px; }
+  :root .garden-rail nav { gap: 2px; }
+  :root .garden-rail nav a {
     display: grid; grid-auto-flow: row; grid-template-columns: 1fr;
     justify-items: center; gap: 2px; padding: 4px 3px; font-size: 9px;
   }
-  [data-theme='prism-light'] .garden-editor-heading, [data-theme='prism-light'] .garden-toolbar { margin-inline: 10px; padding-inline: 12px; }
+  :root .garden-editor-heading, :root .garden-toolbar { margin-inline: 10px; padding-inline: 12px; }
 }
 
 .prism-intro {
@@ -190,21 +206,18 @@
 }
 
 
-.garden-hero-content { display: contents; }
-.garden-hero-prisms { display: none; }
-[data-theme='prism-light'] .garden-editor-heading {
+:root .garden-editor-heading {
   position: relative; overflow: hidden; isolation: isolate;
   min-height: 190px; padding: 23px 29px; align-items: center;
-  background: radial-gradient(ellipse at 85% 8%, #fff, transparent 50%),
-    linear-gradient(105deg, #fffef9, #edf9e6 52%, #ddf3e9 87%, #f2edfa);
+  background: var(--hero-fill);
 }
-[data-theme='prism-light'] .garden-hero-content { display: grid; gap: 15px; min-width: 0; width: 76%; }
-[data-theme='prism-light'] .garden-hero-content h1 { margin: 6px 0 9px; }
-[data-theme='prism-light'] .garden-hero-content .garden-actions { gap: 9px; }
-[data-theme='prism-light'] .garden-hero-content .garden-actions button { padding: 9px 13px; font-weight: 730; }
+:root .garden-hero-content { display: grid; gap: 15px; min-width: 0; width: 76%; }
+:root .garden-hero-content h1 { margin: 6px 0 9px; }
+:root .garden-hero-content .garden-actions { gap: 9px; }
+:root .garden-hero-content .garden-actions button { padding: 9px 13px; font-weight: 730; }
 [data-theme='prism-light'] .garden-hero-content .garden-actions button:not(.garden-primary):not(:disabled) { background: #ffffffbe; }
 [data-theme='prism-light'] .garden-hero-content .garden-actions button:not(.garden-primary):hover:not(:disabled) { background: var(--hover); }
-[data-theme='prism-light'] .garden-hero-prisms {
+:root .garden-hero-prisms {
   display: block; width: 244px; height: 172px; position: absolute; z-index: -1;
   inset: 6px 5% auto auto; pointer-events: none;
 }
@@ -226,10 +239,10 @@
 [data-theme='prism-light'] .evolution .garden-finding[data-finding-variant='resolved'] { background: #edf8ef; }
 [data-theme='prism-light'] .garden-draft-warnings { background: #fff4db; }
 @media (max-width: 900px) {
-  [data-theme='prism-light'] .garden-hero-prisms { right: 0; transform: scale(.82); transform-origin: right center; }
+  :root .garden-hero-prisms { right: 0; transform: scale(.82); transform-origin: right center; }
 }
 @media (max-width: 660px) {
-  [data-theme='prism-light'] .garden-editor-heading { padding: 17px 15px; }
-  [data-theme='prism-light'] .garden-hero-content { width: 100%; }
-  [data-theme='prism-light'] .garden-hero-prisms { right: -19px; opacity: .26; transform: scale(.7); }
+  :root .garden-editor-heading { padding: 17px 15px; }
+  :root .garden-hero-content { width: 100%; }
+  :root .garden-hero-prisms { right: -19px; opacity: .26; transform: scale(.7); }
 }
